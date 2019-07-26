@@ -11,6 +11,8 @@ class USpringArmComponent;
 class USoundBase;
 class ACSWeapon;
 class UCShealthComponent;
+class USoundCue;
+class UAudioComponent;
 
 UCLASS()
 class COOPGAME_API ACSCharacter : public ACharacter
@@ -86,64 +88,18 @@ protected:
 
 	bool ServerReloadMagazine_Validate();
 
-	void EquipWeapon(ACSWeapon* NewWeapon);
+	void EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
 
 	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerEquipWeapon(ACSWeapon* NewWeapon);
+	void ServerEquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
 
-	void SetCurrentWeapon(ACSWeapon* NewWeapon);
+	void SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
 
 	void GetFirstWeaponSlot();
 
 	void GetSecondWeaponSlot();
 
-	void AddWeapon(ACSWeapon* NewWeapon);
-
-	/*UFUNCTION(Reliable, NetMulticast)
-	void MulticastReloadMagazine();*/
-
-	/*void TakeFirstWeapon();
-
-	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerTakeFirstWeapon();
-
-	UFUNCTION(Reliable, NetMulticast)
-	void MulticastTakeFirstWeapon();
-
-	void MulticastTakeFirstWeapon_Implementation();
-
-	void TakeSecondWeapon();
-
-	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerTakeSecondWeapon();
-
-	UFUNCTION(Reliable, NetMulticast)
-	void MulticastTakeSecondWeapon();
-
-	void MulticastTakeSecondWeapon_Implementation();*/
-
-	void AttachWeapon();
-
-	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerAttachWeapon();
-
-	UFUNCTION(Reliable, NetMulticast)
-	void MulticastAttachWeapon();
-
-	void MulticastAttachWeapon_Implementation();
-
-	void DetachWeapon();
-
-	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerDetachWeapon();
-
-	UFUNCTION(Reliable, NetMulticast)
-	void MulticastDetachWeapon();
-
-	void MulticastDetachWeapon_Implementation();
-
-	/*UFUNCTION(Server, Reliable, WithValidation)
-	void ServerDetachWeapon();*/
+	void AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon);
 
 	void InitAllWeapons();
 
@@ -164,6 +120,16 @@ protected:
 	UFUNCTION()
 	void OnRep_CurrentWeapon(ACSWeapon* NewWeapon);
 
+	void PlayDeathEffects();
+
+	/* Animation */
+
+	float PlayDeathAnimation(UAnimMontage* Animation, float InPlayRate = 1.0f, FName StartSectionName = NAME_None);
+
+	void StopDeathAnimation(UAnimMontage* Animation);
+
+	void StopDeathEffects();
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UCameraComponent* CameraComponent;
@@ -171,8 +137,17 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USpringArmComponent* SpringArmComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UAudioComponent* AudioComponent;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundBase* StepSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
+	USoundCue* DeathSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
+	UAnimMontage* DeathAnim;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Player")
 	float ZoomedFOV;
@@ -230,9 +205,14 @@ protected:
 
 	FTimerHandle TimerHandle_BreakTime;
 
+	FTimerHandle TimerHandle_DeathTime;
+
 	float EquipTime;
 
 	float BreakTime;
+
+	UPROPERTY(Replicated)
+	bool bIsRagdoll;
 
 public:	
 	// Called every frame
@@ -242,6 +222,8 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual FVector GetPawnViewLocation() const override;
+
+	TArray<ACSWeapon*> GetCharacterWeapons() const;
 
 	void EndReloading();
 

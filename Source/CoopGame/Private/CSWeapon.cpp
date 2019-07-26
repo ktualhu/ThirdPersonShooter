@@ -43,6 +43,9 @@ ACSWeapon::ACSWeapon()
 	CountOfBulletsInMagazine = MagazineCapacity;
 	CountOfBulletsOnCharacter = MaxBullets;
 
+	FMath::Clamp(CountOfBulletsInMagazine, 0, MagazineCapacity);
+	FMath::Clamp(CountOfBulletsOnCharacter, 0, MaxBullets);
+
 	ReloadingTimeRifleHipAndIronsights = 2.067f;
 
 	//Character = Cast<ACSCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
@@ -57,6 +60,8 @@ void ACSWeapon::BeginPlay()
 
 	TimeBetweenShots = 60 / RateOfFire;
 	//Character = Cast<ACSCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+
+	UE_LOG(LogTemp, Warning, TEXT("%d/%d"), CountOfBulletsInMagazine, CountOfBulletsOnCharacter);
 }
 
 // trace the world from eyes of actor to crosshair location(screen center)
@@ -194,6 +199,31 @@ void ACSWeapon::ServerFire_Implementation()
 bool ACSWeapon::ServerFire_Validate()
 {
 	return true;
+}
+
+int32 ACSWeapon::GetCountOfBulletsInMagazine() const
+{
+	return CountOfBulletsInMagazine;
+}
+
+int32 ACSWeapon::GetCountOfBulletsOnCharacter() const
+{
+	return CountOfBulletsOnCharacter;
+}
+
+void ACSWeapon::SetCountOfBulletsOnCharacter(int32 Bullets)
+{
+	CountOfBulletsOnCharacter += Bullets;
+}
+
+int32 ACSWeapon::GetMagazineCapacity() const
+{
+	return MagazineCapacity;
+}
+
+int32 ACSWeapon::GetMaxBullets() const
+{
+	return MaxBullets;
 }
 
 bool ACSWeapon::CheckForAmmo()

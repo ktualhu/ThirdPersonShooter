@@ -78,39 +78,10 @@ void ACSCharacter::InitAllWeapons()
 	FActorSpawnParameters SpawnInfo;
 	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	//CurrentWeapon = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[0], SpawnParams);
-	//BackWeapon = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[1], SpawnParams);
-	////Weapons.Add(GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[0], SpawnParams));
-	//BackWeapon->GetRootComponent()->SetActive(false);
-	//BackWeapon->GetRootComponent()->SetHiddenInGame(true);
-	////Weapons.Add(GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[1], SpawnParams));
-
-	//
-
 	ACSWeapon* FirstWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[0], SpawnInfo);
-	//ACSWeapon* SecondWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[1], SpawnInfo);
+	ACSWeapon* SecondWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[1], SpawnInfo);
 
-	AddWeapon(FirstWeaponSlot);
-	//AddWeapon(SecondWeaponSlot);
-
-	/*if (CurrentWeapon)
-	{
-		CurrentWeapon->SetOwner(this);
-		CurrentWeapon->SetOwningPawn(this);
-		CurrentWeapon->AttachToComponent(Cast<USceneComponent>(GetMesh()), FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponAttachSocketName);
-		UE_LOG(LogTemp, Warning, TEXT("Current weapon: %s"), *CurrentWeapon->GetName());
-	}*/
-
-	/*if (BackWeapon)
-	{
-		BackWeapon->SetOwner(this);
-		BackWeapon->AttachToComponent(Cast<USceneComponent>(GetMesh()), FAttachmentTransformRules::SnapToTargetNotIncludingScale, BackWeaponAttachSocketName);
-		BackWeapon->GetRootComponent()->SetActive(false);
-		
-		UE_LOG(LogTemp, Warning, TEXT("Back weapon: %s"), *BackWeapon->GetName());
-	}*/
-
-	WeaponIndex = 0;
+	AddWeapon(FirstWeaponSlot, SecondWeaponSlot);
 }
 
 void ACSCharacter::MoveForvard(float Value)
@@ -332,7 +303,7 @@ bool ACSCharacter::ServerReloadMagazine_Validate()
 	return true;
 }
 
-void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon)
+void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
 {
 	if (NewWeapon)
 	{
@@ -341,34 +312,43 @@ void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon)
 			return;
 		}
 
-		if (Role == ROLE_Authority)
+		if (PrevWeapon)
 		{
-			SetCurrentWeapon(NewWeapon);
-		}
-		else
-		{
-			ServerEquipWeapon(NewWeapon);
+			if (Role == ROLE_Authority)
+			{
+				SetCurrentWeapon(NewWeapon, PrevWeapon);
+			}
+			else
+			{
+				ServerEquipWeapon(NewWeapon);
+			}
 		}
 	}
 }
 
-void ACSCharacter::ServerEquipWeapon_Implementation(ACSWeapon* NewWeapon)
+void ACSCharacter::ServerEquipWeapon_Implementation(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
 {
-	EquipWeapon(NewWeapon);
+	EquipWeapon(NewWeapon, PrevWeapon);
 }
 
-bool ACSCharacter::ServerEquipWeapon_Validate(ACSWeapon* NewWeapon)
+bool ACSCharacter::ServerEquipWeapon_Validate(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
 {
 	return true;
 }
 
-void ACSCharacter::SetCurrentWeapon(ACSWeapon* NewWeapon)
+void ACSCharacter::SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
 {
 	CurrentWeapon = NewWeapon;
 	if (NewWeapon)
 	{
 		CurrentWeapon->SetOwningPawn(this);
 		CurrentWeapon->OnEquip();
+
+		if (PrevWeapon)
+		{
+			PrevWeapon->SetOwningPawn(this);
+			PrevWeapon->AttachWeaponToCharacter(BackWeaponAttachSocketName);
+		}
 	}
 }
 
@@ -377,186 +357,40 @@ void ACSCharacter::OnRep_CurrentWeapon(ACSWeapon* NewWeapon)
 	//SetCurrentWeapon(NewWeapon);
 }
 
+
+// Equip weapon from first slot
 void ACSCharacter::GetFirstWeaponSlot()
 {
-	/*if (Weapons[0])
+	if (Weapons[0])
 	{
-		EquipWeapon(Weapons[0]);
-	}*/
+		EquipWeapon(Weapons[0], Weapons[1]);
+	}
 }
 
 void ACSCharacter::GetSecondWeaponSlot()
 {
-	/*if (Weapons[1])
+	if (Weapons[1])
 	{
-		EquipWeapon(Weapons[1]);
-	}*/
+		EquipWeapon(Weapons[1], Weapons[0]);
+	}
 }
 
-void ACSCharacter::AddWeapon(ACSWeapon* NewWeapon)
+void ACSCharacter::AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon)
 {
 	if (NewWeapon)
 	{
 		NewWeapon->OnEnterInventory(this);
 		Weapons.AddUnique(NewWeapon);
+		Weapons.AddUnique(SecondWeapon);
 
 		if (Weapons.Num() > 0 && CurrentWeapon == nullptr)
 		{
 			if (NewWeapon == Weapons[0])
 			{
-				EquipWeapon(Weapons[0]);
+				EquipWeapon(NewWeapon, SecondWeapon);
 			}
 		}
 	}
-}
-
-
-//void ACSCharacter::TakeFirstWeapon()
-//{
-//	if (Role < ROLE_Authority)
-//	{
-//		ServerTakeFirstWeapon();
-//	}
-//
-//	if (CurrentWeapon && !IsSprintingNow)
-//	{
-//		if (CurrentWeapon->GetClass() != Weapons[0]->GetClass())
-//		{
-//			//Weapons[WeaponIndex] = CurrentWeapon;
-//			StopFire();
-//			WeaponIndex = 0;
-//
-//			//CurrentWeapon = Weapons[WeaponIndex];
-//
-//			MulticastAttachWeapon();
-//		}
-//	}
-//}
-//
-//void ACSCharacter::ServerTakeFirstWeapon_Implementation()
-//{
-//	TakeFirstWeapon();
-//}
-//
-//bool ACSCharacter::ServerTakeFirstWeapon_Validate()
-//{
-//	return true;
-//}
-//
-//void ACSCharacter::MulticastTakeFirstWeapon_Implementation()
-//{
-//	
-//}
-//
-//void ACSCharacter::TakeSecondWeapon()
-//{
-//	if (Role < ROLE_Authority)
-//	{
-//		ServerTakeSecondWeapon();
-//	}
-//
-//	if (CurrentWeapon && !IsSprintingNow)
-//	{
-//		if (CurrentWeapon->GetClass() != Weapons[1]->GetClass())
-//		{
-//			//Weapons[WeaponIndex] = CurrentWeapon;
-//			StopFire();
-//			WeaponIndex = 1;
-//
-//			//CurrentWeapon = Weapons[WeaponIndex];
-//
-//			MulticastAttachWeapon();
-//		}
-//	}
-//	
-//}
-//
-//void ACSCharacter::ServerTakeSecondWeapon_Implementation()
-//{
-//	TakeSecondWeapon();
-//}
-//
-//bool ACSCharacter::ServerTakeSecondWeapon_Validate()
-//{
-//	return true;
-//}
-//
-//void ACSCharacter::MulticastTakeSecondWeapon_Implementation()
-//{
-//}
-
-void ACSCharacter::AttachWeapon()
-{
-	MulticastDetachWeapon();
-
-	ChangingWeaponNow = true;
-
-	CurrentWeapon = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[WeaponIndex], FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
-	if (CurrentWeapon)
-	{
-		CurrentWeapon->SetOwner(this);
-		CurrentWeapon->AttachToComponent(Cast<USceneComponent>(GetMesh()), FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponAttachSocketName);
-		CurrentWeapon->GetRootComponent()->SetHiddenInGame(false);
-		CurrentWeapon->GetRootComponent()->SetActive(true);
-	}
-	GetWorldTimerManager().SetTimer(TimerHandle_RemoveWeaponTime, this, &ACSCharacter::RemoveWeapon, EquipTime, true);
-}
-
-void ACSCharacter::ServerAttachWeapon_Implementation()
-{
-	AttachWeapon();
-}
-
-bool ACSCharacter::ServerAttachWeapon_Validate()
-{
-	return true;
-}
-
-void ACSCharacter::MulticastAttachWeapon_Implementation()
-{
-	AttachWeapon();
-}
-
-void ACSCharacter::DetachWeapon()
-{	
-	CurrentWeapon->GetRootComponent()->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-	CurrentWeapon->GetRootComponent()->SetHiddenInGame(true);
-}
-
-void ACSCharacter::ServerDetachWeapon_Implementation()
-{
-	DetachWeapon();
-}
-
-bool ACSCharacter::ServerDetachWeapon_Validate()
-{
-	return true;
-}
-
-void ACSCharacter::MulticastDetachWeapon_Implementation()
-{
-	DetachWeapon();
-}
-
-void ACSCharacter::SaveWeaponInfoAfterDetach(uint8 WeaponIndex)
-{
-	Weapons[WeaponIndex] = CurrentWeapon;
-}
-
-void ACSCharacter::RemoveWeapon()
-{
-	//UE_LOG(LogTemp, Warning, TEXT("Remove Weapon"));
-	//ChangingWeaponNow = false;
-	//GetWorldTimerManager().ClearTimer(TimerHandle_RemoveWeaponTime);
-}
-
-void ACSCharacter::TakeWeapon()
-{
-	//UE_LOG(LogTemp, Warning, TEXT("Take Weapon"));
-	////AttachWeapon();
-	//GetWorldTimerManager().SetTimer(TimerHandle_EquipWeaponTime, this, &ACSCharacter::AttachWeapon, EquipTime / 2.f, true);
-	//ChangingWeaponNow = false;
-	//GetWorldTimerManager().ClearTimer(TimerHandle_EquipWeaponTime);
 }
 
 bool ACSCharacter::isMoving()
@@ -620,20 +454,84 @@ FVector ACSCharacter::GetPawnViewLocation() const
 	return Super::GetPawnViewLocation();
 }
 
+TArray<ACSWeapon*> ACSCharacter::GetCharacterWeapons() const
+{
+	return Weapons;
+}
+
 void ACSCharacter::OnHealthChanged(UCSHealthComponent* HealthComp, float Health, float HealthDelta, const UDamageType* DamageType, 
 									AController* InstigatedBy, AActor* DamageCauser)
 {
+
 	if (Health <= 0.0f && !bDied)
 	{
+
+		UE_LOG(LogTemp, Warning, TEXT("Dying.."));
 		// DIE
 		bDied = true;
+		
+		DetachFromControllerPendingDestroy();
+
 		GetMovementComponent()->StopMovementImmediately();
 		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
 
-		DetachFromControllerPendingDestroy();
+		GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+		SetActorEnableCollision(true);
+
+		if (!bIsRagdoll)
+		{
+		// Ragdoll
+		
+			GetMesh()->SetAllBodiesSimulatePhysics(true);
+			GetMesh()->SetSimulatePhysics(true);
+			GetMesh()->WakeAllRigidBodies();
+			GetMesh()->bBlendPhysics = true;
+
+			UCharacterMovementComponent* CharacterComp = Cast<UCharacterMovementComponent>(GetMovementComponent());
+			if (CharacterComp)
+			{
+				CharacterComp->StopMovementImmediately();
+				CharacterComp->DisableMovement();
+				CharacterComp->SetComponentTickEnabled(false);
+			}
+
+			SetLifeSpan(10.0f);
+			bIsRagdoll = true;
+		}
+
+		/*PlayDeathEffects();*/
 
 		SetLifeSpan(10.0f);
 	}
+}
+
+void ACSCharacter::PlayDeathEffects()
+{
+}
+
+float ACSCharacter::PlayDeathAnimation(UAnimMontage* Animation, float InPlayRate, FName StartSectionName)
+{
+	float Duration = 0.0f;
+	if (Animation)
+	{
+		Duration = this->PlayAnimMontage(Animation);
+	}
+	return Duration;
+}
+
+void ACSCharacter::StopDeathAnimation(UAnimMontage* Animation)
+{
+	if (DeathAnim)
+	{
+		this->StopAnimMontage(Animation);
+	}
+}
+
+void ACSCharacter::StopDeathEffects()
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle_DeathTime);
+	StopDeathAnimation(DeathAnim);
 }
 
 FRotator ACSCharacter::GetAimOffset() const
@@ -656,6 +554,7 @@ void ACSCharacter::GetLifetimeReplicatedProps(TArray < class FLifetimeProperty >
 	DOREPLIFETIME(ACSCharacter, WeaponIndex);
 	DOREPLIFETIME(ACSCharacter, ReloadingNow);
 	DOREPLIFETIME(ACSCharacter, bDied);
+	DOREPLIFETIME(ACSCharacter, bIsRagdoll);
 }
 
 

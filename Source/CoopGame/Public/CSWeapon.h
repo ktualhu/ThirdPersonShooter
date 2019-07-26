@@ -38,13 +38,28 @@ public:
 
 	virtual void BeginPlay() override;
 
-	void SetOwningPawn(ACSCharacter* Character);
+	virtual void SetOwningPawn(ACSCharacter* Character);
 
-	void OnEquip();
+	virtual void OnEquip();
 
-	void OnEnterInventory(ACSCharacter* NewOwner);
+	virtual void OnEnterInventory(ACSCharacter* NewOwner);
+
+	virtual void AttachWeaponToCharacter(FName SocketName);
+
+	/*  Ammo Info  */
+	virtual int32 GetCountOfBulletsInMagazine() const;
+
+	virtual int32 GetCountOfBulletsOnCharacter() const;
+
+	virtual void SetCountOfBulletsOnCharacter(int32 Bullets);
+
+	virtual int32 GetMagazineCapacity() const;
+
+	virtual int32 GetMaxBullets() const;
 
 protected:
+
+	/*  Fire and Fire effects  */
 	void PlayFireEffects(FVector TraceEnd);
 
 	void PlayImpactEffects(EPhysicalSurface SurfaceType, FVector ImpactPoint);
@@ -57,11 +72,11 @@ protected:
 	UFUNCTION(Server, Reliable, WithValidation)
 	virtual void ServerFire();
 
+	/*  Reload and Ammo  */
+
 	virtual bool CheckForAmmo();
 
 	virtual void ReloadingEnd();
-
-	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION(Reliable, Client)
 	void ClientReload();
@@ -75,15 +90,6 @@ protected:
 
 	bool ServerReload_Validate();
 
-	UFUNCTION()
-	void OnRep_HitScanTrace();
-
-	UFUNCTION()
-	void OnRep_Reload();
-
-	UFUNCTION()
-	void OnRep_MyCharacter();
-
 	/*  Animation methods  */
 
 	float PlayWeaponAnimations(UAnimMontage* Animation, float InPlayRate = 1.f, FName StartSectionName = NAME_None);
@@ -92,11 +98,22 @@ protected:
 
 	/*  Equip  */
 
-	void OnEquipFinished();
+	virtual void OnEquipFinished();
 
-	void AttachWeaponToCharacter(FName SocketName);
+	virtual void DetachWeaponFromCharacter();
 
-	void DetachWeaponFromCharacter();
+	/*  Net  */
+
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION()
+	void OnRep_MyCharacter();
+
+	UFUNCTION()
+	void OnRep_HitScanTrace();
+
+	UFUNCTION()
+	void OnRep_Reload();
 
 protected:
 

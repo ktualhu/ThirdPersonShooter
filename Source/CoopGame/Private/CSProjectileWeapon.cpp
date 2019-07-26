@@ -20,7 +20,7 @@ ACSProjectileWeapon::ACSProjectileWeapon()
 	RateOfFire = 100;
 
 	MagazineCapacity = 6;
-	MaxBullets = 12;
+	MaxBullets = 24;
 
 	CountOfBulletsInMagazine = MagazineCapacity;
 	CountOfBulletsOnCharacter = MaxBullets;
