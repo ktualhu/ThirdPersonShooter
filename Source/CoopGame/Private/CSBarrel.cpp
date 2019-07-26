@@ -8,6 +8,8 @@
 #include "PhysicsEngine/RadialForceComponent.h"
 #include "Net/UnrealNetwork.h"
 
+// Implement Explosive barrel
+
 // Sets default values
 ACSBarrel::ACSBarrel()
 {
