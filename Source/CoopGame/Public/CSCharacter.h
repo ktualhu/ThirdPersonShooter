@@ -33,6 +33,12 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	/*  Weapon initialization  */
+
+	void InitAllWeapons();
+
+	/*  Movement  */
+
 	void MoveForvard(float Value);
 
 	void MoveRight(float Value);
@@ -42,6 +48,8 @@ protected:
 	void EndCrouch();
 
 	void BeginJump();
+
+	/*  Zoom  */
 
 	void BeginZoom();
 
@@ -59,9 +67,15 @@ protected:
 	UFUNCTION(Reliable, NetMulticast)
 	void MulticastEndZoom();
 
+	void SetFOVCameraView(float DeltaTime);
+
+	/*  Fire  */
+
 	void StartFire();
 
 	void StopFire();
+
+	/*  Sprint  */
 
 	void BeginSprint();
 
@@ -79,6 +93,15 @@ protected:
 	UFUNCTION(Reliable, NetMulticast)
 	void MulticastEndSprint();
 
+	void HandleSprintWidget(float Delta);
+
+	bool CanSprint();
+
+	// if CurrentSprintProgress < 100.0f or Character is sprinting now then show Sprint Widget 
+	void SetSprintWidget();
+
+	/*  Reloading Weapon  */
+
 	void ReloadMagazine();
 
 	UFUNCTION(Server, Reliable, WithValidation)
@@ -87,6 +110,8 @@ protected:
 	void ServerReloadMagazine_Implementation();
 
 	bool ServerReloadMagazine_Validate();
+
+	/*  Equiping Weapon  */
 
 	void EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
 
@@ -101,41 +126,46 @@ protected:
 
 	void AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon);
 
-	void InitAllWeapons();
-
-	void SaveWeaponInfoAfterDetach(uint8 WeaponIndex);
-
-	void RemoveWeapon();
-
-	void TakeWeapon();
+	/*  Health and Death  */
 
 	UFUNCTION()
 	void OnHealthChanged(UCSHealthComponent* HealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 
-	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
+	/*  Net  */
 
-	UFUNCTION(BlueprintCallable)
-	FRotator GetAimOffset() const;
+	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION()
 	void OnRep_CurrentWeapon(ACSWeapon* NewWeapon);
 
-	void PlayDeathEffects();
+	/*  Aiming  */
 
-	/* Animation */
-
-	float PlayDeathAnimation(UAnimMontage* Animation, float InPlayRate = 1.0f, FName StartSectionName = NAME_None);
-
-	void StopDeathAnimation(UAnimMontage* Animation);
-
-	void StopDeathEffects();
+	UFUNCTION(BlueprintCallable)
+	FRotator GetAimOffset() const;
 
 protected:
+
+	/*  Camera  */
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UCameraComponent* CameraComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USpringArmComponent* SpringArmComponent;
+
+	// Default field of view
+	float DefaultFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player")
+	float ZoomedFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player")
+	float SprintFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Player", meta = (ClampMin = 0.1, ClampMax = 100))
+	float ZoomInterpSpeed;
+
+	/*  AudioComponent and Sounds  */
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UAudioComponent* AudioComponent;
@@ -146,20 +176,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundCue* DeathSound;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animation")
-	UAnimMontage* DeathAnim;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Player")
-	float ZoomedFOV;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Player", meta = (ClampMin = 0.1, ClampMax = 100))
-	float ZoomInterpSpeed;
+	/*  Weapons  */
 
 	UPROPERTY(Replicated, EditDefaultsOnly, Category = "Player")
 	TArray<TSubclassOf<ACSWeapon>> StarterWeaponClasses;
 
 	UPROPERTY(Transient, ReplicatedUsing = OnRep_CurrentWeapon, BlueprintReadOnly, Category = "Weapon")
 	ACSWeapon* CurrentWeapon;
+
+	UPROPERTY(Replicated)
+	ACSWeapon* BackWeapon;
+
+	/*  Reloading, Sprinting, Zooming, Dying bools  */
 
 	UPROPERTY(Replicated, VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
 	bool ReloadingNow;
@@ -173,23 +201,36 @@ protected:
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
 	bool IsSprintingNow;
 
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Player")
+	bool bDied;
+
+	/*  Sprint and Walking  */
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Walking")
 	float SprintMultiplier;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	float DefaultWalkSpeed;
 
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Player")
-	bool bDied;
+	UPROPERTY(EditDefaultsOnly, Category = "Sprint")
+	float DefaultSprintProgress;
+
+	UPROPERTY(BlueprintReadOnly)
+	float CurrentSprintProgress;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sprint")
+	float SprintDecrease;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sprint")
+	float SprintIncrease;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool ShowSprintWidget;
+
+	/*  Health  */
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
 	UCSHealthComponent* HealthComponent;
-
-	UPROPERTY(Replicated)
-	ACSWeapon* BackWeapon;
-
-	// Default field of view
-	float DefaultFOV;
 
 	bool bWantsToZoom;
 

@@ -36,6 +36,7 @@ ACSCharacter::ACSCharacter()
 
 	GetCapsuleComponent()->SetCollisionResponseToChannel(COLLISION_WEAPON, ECR_Ignore);
 
+	SprintFOV = 100.0f;
 	ZoomedFOV = 65.0f;
 	ZoomInterpSpeed = 20.0f;
 
@@ -54,6 +55,16 @@ ACSCharacter::ACSCharacter()
 	DefaultWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 
 	BreakTime = 5.f;
+
+	// Sprint Widget
+
+	DefaultSprintProgress = 100.0f;
+	CurrentSprintProgress = DefaultSprintProgress;
+
+	SprintDecrease = 0.05f;
+	SprintIncrease = 0.1f;
+
+	ShowSprintWidget = false;
 }
 
 // Called when the game starts or when spawned
@@ -190,6 +201,29 @@ void ACSCharacter::MulticastEndZoom_Implementation()
 	IsZoomingNow = false;
 }
 
+void ACSCharacter::SetFOVCameraView(float DeltaTime)
+{
+	float TargetFOV;
+
+	if (IsSprintingNow)
+	{
+		TargetFOV = IsSprintingNow ? SprintFOV : DefaultFOV;
+	}
+
+	else if (IsZoomingNow)
+	{
+		TargetFOV = bWantsToZoom ? ZoomedFOV : DefaultFOV;
+	}
+
+	else
+	{
+		TargetFOV = DefaultFOV;
+	}
+
+	float NewFOV = FMath::FInterpTo(CameraComponent->FieldOfView, TargetFOV, DeltaTime, ZoomInterpSpeed);
+	CameraComponent->SetFieldOfView(NewFOV);
+}
+
 void ACSCharacter::StartFire()
 {
 	if (CurrentWeapon && !IsSprintingNow && !ChangingWeaponNow)
@@ -211,11 +245,15 @@ void ACSCharacter::StopFire()
 
 void ACSCharacter::BeginSprint()
 {
-	if (Role < ROLE_Authority)
+	if (isMoving() && CanSprint() && !bIsCrouched)
 	{
-		ServerBeginSprint();
+		UE_LOG(LogTemp, Warning, TEXT("Begin run"));
+		if (Role < ROLE_Authority)
+		{
+			ServerBeginSprint();
+		}
+		MulticastBeginSprint();
 	}
-	MulticastBeginSprint();
 }
 
 void ACSCharacter::ServerBeginSprint_Implementation()
@@ -236,11 +274,14 @@ void ACSCharacter::MulticastBeginSprint_Implementation()
 
 void ACSCharacter::EndSprint()
 {
-	if (Role < ROLE_Authority)
+	if (IsSprintingNow)
 	{
-		ServerEndSprint();
+		if (Role < ROLE_Authority)
+		{
+			ServerEndSprint();
+		}
+		MulticastEndSprint();
 	}
-	MulticastEndSprint();
 }
 
 void ACSCharacter::ServerEndSprint_Implementation()
@@ -257,6 +298,55 @@ void ACSCharacter::MulticastEndSprint_Implementation()
 {
 	IsSprintingNow = false;
 	GetCharacterMovement()->MaxWalkSpeed /= SprintMultiplier;
+}
+
+void ACSCharacter::HandleSprintWidget(float Delta)
+{
+	FMath::Clamp(CurrentSprintProgress, 0.0f, DefaultSprintProgress);
+	CanSprint();
+
+	if (IsSprintingNow)
+	{
+		if (CurrentSprintProgress > 0.0f)
+		{
+			CurrentSprintProgress -= SprintDecrease * Delta;
+		}
+	}
+	else
+	{
+		if (CurrentSprintProgress < 100.f)
+		{
+			CurrentSprintProgress += SprintIncrease * Delta;
+		}
+	}
+
+	SetSprintWidget();
+}
+
+bool ACSCharacter::CanSprint()
+{
+	if (CurrentSprintProgress > 1.0f)
+	{
+		return true;
+	}
+
+	else
+	{
+		EndSprint();
+		return false;
+	}
+}
+
+void ACSCharacter::SetSprintWidget()
+{
+	if (CurrentSprintProgress < 100.f)
+	{
+		ShowSprintWidget = true;
+	}
+	else
+	{
+		ShowSprintWidget = false;
+	}
 }
 
 void ACSCharacter::ReloadMagazine()
@@ -407,10 +497,9 @@ void ACSCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	float TargetFOV = bWantsToZoom ? ZoomedFOV : DefaultFOV;
-	float NewFOV = FMath::FInterpTo(CameraComponent->FieldOfView, TargetFOV, DeltaTime, ZoomInterpSpeed);
+	SetFOVCameraView(DeltaTime);
 
-	CameraComponent->SetFieldOfView(NewFOV);
+	HandleSprintWidget(DeltaTime);
 }
 
 // Called to bind functionality to input
@@ -504,34 +593,6 @@ void ACSCharacter::OnHealthChanged(UCSHealthComponent* HealthComp, float Health,
 
 		SetLifeSpan(10.0f);
 	}
-}
-
-void ACSCharacter::PlayDeathEffects()
-{
-}
-
-float ACSCharacter::PlayDeathAnimation(UAnimMontage* Animation, float InPlayRate, FName StartSectionName)
-{
-	float Duration = 0.0f;
-	if (Animation)
-	{
-		Duration = this->PlayAnimMontage(Animation);
-	}
-	return Duration;
-}
-
-void ACSCharacter::StopDeathAnimation(UAnimMontage* Animation)
-{
-	if (DeathAnim)
-	{
-		this->StopAnimMontage(Animation);
-	}
-}
-
-void ACSCharacter::StopDeathEffects()
-{
-	GetWorldTimerManager().ClearTimer(TimerHandle_DeathTime);
-	StopDeathAnimation(DeathAnim);
 }
 
 FRotator ACSCharacter::GetAimOffset() const
