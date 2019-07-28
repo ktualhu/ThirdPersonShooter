@@ -228,8 +228,8 @@ void ACSCharacter::StartFire()
 {
 	if (CurrentWeapon && !IsSprintingNow && !ChangingWeaponNow)
 	{
-		CurrentWeapon->StartFire();
 		IsFiringNow = true;
+		CurrentWeapon->StartFire();
 	}
 	
 }
@@ -397,6 +397,16 @@ void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
 {
 	if (NewWeapon)
 	{
+		if (NewWeapon->GetClass() == ShotgunWeapon.Get() && !IsShotgunEquiped)
+		{
+			IsShotgunEquiped = true;
+		}
+
+		if (NewWeapon->GetClass() != ShotgunWeapon.Get() && IsShotgunEquiped)
+		{
+			IsShotgunEquiped = false;
+		}
+
 		if (CurrentWeapon == NewWeapon)
 		{
 			return;
@@ -521,8 +531,16 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	PlayerInputComponent->BindAction("Zoom", IE_Pressed, this, &ACSCharacter::BeginZoom);
 	PlayerInputComponent->BindAction("Zoom", IE_Released, this, &ACSCharacter::EndZoom);
 
-	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ACSCharacter::StartFire);
-	PlayerInputComponent->BindAction("Fire", IE_Released, this, &ACSCharacter::StopFire);
+	if (CurrentWeapon && ShotgunWeapon && (CurrentWeapon->GetClass() == ShotgunWeapon.Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Shotgun"));
+		PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ACSCharacter::StartFire);
+	}
+	else
+	{
+		PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ACSCharacter::StartFire);
+		PlayerInputComponent->BindAction("Fire", IE_Released, this, &ACSCharacter::StopFire);
+	}
 
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &ACSCharacter::BeginSprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &ACSCharacter::EndSprint);

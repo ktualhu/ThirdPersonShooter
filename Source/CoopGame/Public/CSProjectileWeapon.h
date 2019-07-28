@@ -41,6 +41,4 @@ protected:
 	virtual void StartFire() override;
 	virtual void StopFire() override;
 
-private:
-
 };

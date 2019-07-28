@@ -75,7 +75,7 @@ void ACSWeapon::Fire()
 		ServerFire();
 	}
 
-	if (CheckForAmmo() && !ReloadNow)
+	if (CanShoot())
 	{
 		AActor* Owner = GetOwner();
 
@@ -245,6 +245,15 @@ bool ACSWeapon::CanReload()
 	return false;
 }
 
+bool ACSWeapon::CanShoot()
+{
+	if (CheckForAmmo() && !ReloadNow && !bPendingEquip)
+	{
+		return true;
+	}
+	return false;
+}
+
 void ACSWeapon::Reload(bool bFromReplication)
 {
 	if (!bFromReplication && Role < ROLE_Authority)
@@ -402,6 +411,11 @@ void ACSWeapon::PlayFireSoundEffect()
 void ACSWeapon::OnEquip()
 {
 	bPendingEquip = true;
+
+	if (EquipWeaponSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, EquipWeaponSound, this->GetActorLocation());
+	}
 
 	float Duration = PlayWeaponAnimations(EquipAnim);
 	//EquipStartedTime = GetWorld()->TimeSeconds;

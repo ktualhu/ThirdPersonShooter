@@ -162,6 +162,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundBase* DefaultImpactSurfaceSound;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
+	USoundBase* EquipWeaponSound;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
 	float BaseDamage;
 
@@ -216,9 +219,13 @@ public:
 
 	virtual bool CanReload();
 
+	virtual bool CanShoot();
+
 public:
 	UPROPERTY(Transient, ReplicatedUsing = OnRep_Reload)
 	bool ReloadNow;
+
+	bool IsFireNow;
 
 private:
 	float AnimDuration;

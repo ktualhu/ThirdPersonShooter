@@ -16,7 +16,7 @@ ACSProjectileWeapon::ACSProjectileWeapon()
 	/*bReplicates = true;
 	bNetUseOwnerRelevancy = true;*/
 
-	BaseDamage = 20.0f;
+	BaseDamage = 500.0f;
 	RateOfFire = 100;
 
 	MagazineCapacity = 6;
@@ -37,7 +37,7 @@ void ACSProjectileWeapon::Fire()
 		ServerFireProjectile();
 	}
 
-	if (Super::CheckForAmmo() && !Super::ReloadNow)
+	if (CanShoot())
 	{
 		if (Projectile)
 		{

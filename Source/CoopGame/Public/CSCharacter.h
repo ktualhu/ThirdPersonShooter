@@ -178,7 +178,7 @@ protected:
 
 	/*  Weapons  */
 
-	UPROPERTY(Replicated, EditDefaultsOnly, Category = "Player")
+	UPROPERTY(Replicated, EditDefaultsOnly, Category = "Weapon")
 	TArray<TSubclassOf<ACSWeapon>> StarterWeaponClasses;
 
 	UPROPERTY(Transient, ReplicatedUsing = OnRep_CurrentWeapon, BlueprintReadOnly, Category = "Weapon")
@@ -187,12 +187,20 @@ protected:
 	UPROPERTY(Replicated)
 	ACSWeapon* BackWeapon;
 
+	// check if we're equiping shotgun for animation purposes
+
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	TSubclassOf<ACSWeapon> ShotgunWeapon;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool IsShotgunEquiped;
+
 	/*  Reloading, Sprinting, Zooming, Dying bools  */
 
-	UPROPERTY(Replicated, VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
+	UPROPERTY(Replicated, VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	bool ReloadingNow;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	bool ChangingWeaponNow;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
