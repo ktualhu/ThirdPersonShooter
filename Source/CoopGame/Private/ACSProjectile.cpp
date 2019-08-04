@@ -87,5 +87,5 @@ void AACSProjectile::MulticastLifeSpanExpired_Implementation()
 	{
 		UGameplayStatics::PlaySound2D(this, ExplosionSound);
 	}
-	DrawDebugSphere(GetWorld(), CollisionComponent->GetComponentLocation(), 200.0f, 24, FColor::Red, false, 2.0f, 0, 2.0f);
+	//DrawDebugSphere(GetWorld(), CollisionComponent->GetComponentLocation(), 200.0f, 24, FColor::Red, false, 2.0f, 0, 2.0f);
 }

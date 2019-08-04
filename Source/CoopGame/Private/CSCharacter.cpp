@@ -8,6 +8,9 @@
 #include "GameFramework/PawnMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "..\Public\CSWeapon.h"
+#include "..\Public\CSPistol.h"
+#include "..\Public\CSShotgun.h"
+#include "..\Public\CSShotgun.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -42,6 +45,8 @@ ACSCharacter::ACSCharacter()
 
 	WeaponAttachSocketName = "weapon_socket";
 	BackWeaponAttachSocketName = "back_weapon_socket";
+	PistolAttachSocketName = "pistol_socket";
+	ShotgunAttachSocketName = "shotgun_socket";
 
 	ReloadingNow = false;
 
@@ -65,6 +70,8 @@ ACSCharacter::ACSCharacter()
 	SprintIncrease = 0.1f;
 
 	ShowSprintWidget = false;
+
+	IsSniperRifleZooming = false;
 }
 
 // Called when the game starts or when spawned
@@ -77,11 +84,19 @@ void ACSCharacter::BeginPlay()
 	HealthComponent->OnHealthChanged.AddDynamic(this, &ACSCharacter::OnHealthChanged);
 
 	// Spawn weapons on the server ONLY
-	if (Role == ROLE_Authority)
-	{
+	/*if (Role == ROLE_Authority)
+	{*/
 		// Init defaults weapons
-		InitAllWeapons();
-	}
+		//InitAllWeapons();
+	//}
+
+	/*Weapons.InsertZeroed(0, 1);
+	Weapons.InsertZeroed(1, 1);
+	Weapons.InsertZeroed(2, 1);*/
+
+	Weapons.SetNum(3, false);
+
+	IsUnarmed = true;
 }
 
 void ACSCharacter::InitAllWeapons()
@@ -89,10 +104,11 @@ void ACSCharacter::InitAllWeapons()
 	FActorSpawnParameters SpawnInfo;
 	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	ACSWeapon* FirstWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[0], SpawnInfo);
-	ACSWeapon* SecondWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(StarterWeaponClasses[1], SpawnInfo);
+	ACSWeapon* FirstWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(FirstWeaponClass, SpawnInfo);
+	ACSWeapon* SecondWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(SecondWeaponClass, SpawnInfo);
+	ACSWeapon* ThirdWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(ThirdWeaponClass, SpawnInfo);
 
-	AddWeapon(FirstWeaponSlot, SecondWeaponSlot);
+	AddWeapon(FirstWeaponSlot, SecondWeaponSlot, ThirdWeaponSlot);
 }
 
 void ACSCharacter::MoveForvard(float Value)
@@ -169,8 +185,15 @@ void ACSCharacter::MulticastBeginZoom_Implementation()
 {
 	if (!IsSprintingNow)
 	{
-		bWantsToZoom = true;
-		IsZoomingNow = true;
+		if (CurrentWeapon && CurrentWeapon->GetClass() == SniperRifleWeapon.Get())
+		{
+			IsSniperRifleZooming = true;
+		}
+		else
+		{
+			bWantsToZoom = true;
+			IsZoomingNow = true;
+		}
 	}
 }
 
@@ -197,8 +220,15 @@ bool ACSCharacter::ServerEndZoom_Validate()
 
 void ACSCharacter::MulticastEndZoom_Implementation()
 {
-	bWantsToZoom = false;
-	IsZoomingNow = false;
+	if (IsSniperRifleZooming)
+	{
+		IsSniperRifleZooming = false;
+	}
+	else
+	{
+		bWantsToZoom = false;
+		IsZoomingNow = false;
+	}
 }
 
 void ACSCharacter::SetFOVCameraView(float DeltaTime)
@@ -215,6 +245,11 @@ void ACSCharacter::SetFOVCameraView(float DeltaTime)
 		TargetFOV = bWantsToZoom ? ZoomedFOV : DefaultFOV;
 	}
 
+	else if (IsSniperRifleZooming)
+	{
+		TargetFOV = IsSniperRifleZooming ? SniperRifleFOV : DefaultFOV;
+	}
+
 	else
 	{
 		TargetFOV = DefaultFOV;
@@ -224,12 +259,27 @@ void ACSCharacter::SetFOVCameraView(float DeltaTime)
 	CameraComponent->SetFieldOfView(NewFOV);
 }
 
+void ACSCharacter::FireShotgun()
+{
+	if (CurrentWeapon && !IsSprintingNow && !ChangingWeaponNow)
+	{
+		if (CurrentWeapon->GetClass() == ShotgunWeapon.Get())
+		{
+			CurrentWeapon->StartFire();
+		}
+	}
+}
+
 void ACSCharacter::StartFire()
 {
 	if (CurrentWeapon && !IsSprintingNow && !ChangingWeaponNow)
 	{
-		IsFiringNow = true;
-		CurrentWeapon->StartFire();
+
+		if (CurrentWeapon->GetClass() != ShotgunWeapon.Get())
+		{
+			CurrentWeapon->StartFire();
+			IsFiringNow = true;
+		}
 	}
 	
 }
@@ -238,14 +288,17 @@ void ACSCharacter::StopFire()
 {
 	if (CurrentWeapon && !IsSprintingNow)
 	{
-		CurrentWeapon->StopFire();
-		IsFiringNow = false;
+		if (CurrentWeapon->GetClass() != ShotgunWeapon.Get())
+		{
+			CurrentWeapon->StopFire();
+			IsFiringNow = false;
+		}
 	}
 }
 
 void ACSCharacter::BeginSprint()
 {
-	if (isMoving() && CanSprint() && !bIsCrouched)
+	if (isMoving() && CanSprint() && !bIsCrouched && !IsSniperRifleZooming)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Begin run"));
 		if (Role < ROLE_Authority)
@@ -351,15 +404,10 @@ void ACSCharacter::SetSprintWidget()
 
 void ACSCharacter::ReloadMagazine()
 {
-	/*if (Role < ROLE_Authority)
-	{
-		ServerReloadMagazine();
-	}*/
-	if (CurrentWeapon && CurrentWeapon->CanReload() && !IsSprintingNow)
+	if (CurrentWeapon && CurrentWeapon->CanReload() && !IsSprintingNow && !EquipingNow)
 	{
 		StopFire();
-		CurrentWeapon->Reload();
-		ReloadingNow = true;
+		CurrentWeapon->Reload();	
 	}
 }
 
@@ -370,7 +418,17 @@ void ACSCharacter::EndReloading()
 	{
 		ServerEndReloading();
 	}
-	ReloadingNow = false;
+}
+
+void ACSCharacter::EndEquiping()
+{
+	EquipingNow = false;
+}
+
+void ACSCharacter::EndUnEquiping()
+{
+	CurrentWeapon->SetOwningPawn(this);
+	CurrentWeapon->OnEquip();
 }
 
 void ACSCharacter::ServerEndReloading_Implementation()
@@ -393,23 +451,43 @@ bool ACSCharacter::ServerReloadMagazine_Validate()
 	return true;
 }
 
-void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
+void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon, ACSWeapon* ThirdWeapon)
 {
+	if (ReloadingNow)
+	{
+		return;
+	}
 	if (NewWeapon)
 	{
+		EquipingNow = true;
 		if (NewWeapon->GetClass() == ShotgunWeapon.Get() && !IsShotgunEquiped)
 		{
 			IsShotgunEquiped = true;
 		}
 
-		if (NewWeapon->GetClass() != ShotgunWeapon.Get() && IsShotgunEquiped)
+		else if (NewWeapon->GetClass() != ShotgunWeapon.Get() && IsShotgunEquiped)
 		{
 			IsShotgunEquiped = false;
 		}
 
-		if (CurrentWeapon == NewWeapon)
+		if (NewWeapon->GetClass() == PistolWeapon.Get() && !IsPistolEquiped)
 		{
-			return;
+			IsPistolEquiped = true;
+		}
+
+		else if (NewWeapon->GetClass() != PistolWeapon.Get() && IsPistolEquiped)
+		{
+			IsPistolEquiped = false;
+		}
+
+		if (CurrentWeapon && CurrentWeapon == NewWeapon && !IsUnarmed)
+		{
+			IsUnarmed = true;
+		}
+
+		if (!CurrentWeapon && IsUnarmed)
+		{
+			IsUnarmed = false;
 		}
 
 		if (PrevWeapon)
@@ -423,7 +501,30 @@ void ACSCharacter::EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
 				ServerEquipWeapon(NewWeapon);
 			}
 		}
+		
+		else
+		{
+			if (Role == ROLE_Authority)
+			{
+				SetCurrentWeapon(NewWeapon);
+			}
+			else
+			{
+				ServerEquipWeapon(NewWeapon);
+			}
+		}
 	}
+	else
+	{
+		IsUnarmed = true;
+		CurrentWeapon->SetOwningPawn(nullptr);
+		CurrentWeapon = nullptr;
+	}
+}
+
+void ACSCharacter::EquipWeaponAfterPickup(ACSWeapon* NewWeapon, ACSWeapon* CurrentWeapon)
+{
+	
 }
 
 void ACSCharacter::ServerEquipWeapon_Implementation(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
@@ -436,60 +537,156 @@ bool ACSCharacter::ServerEquipWeapon_Validate(ACSWeapon* NewWeapon, ACSWeapon* P
 	return true;
 }
 
-void ACSCharacter::SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon)
+void ACSCharacter::SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon, ACSWeapon* ThirdWeapon)
 {
+	if (IsUnarmed)
+	{
+		if (CurrentWeapon && CurrentWeapon->GetClass() == ShotgunWeapon.Get())
+		{
+			CurrentWeapon->AttachWeaponToCharacter(ShotgunAttachSocketName);
+		}
+
+		else if (CurrentWeapon && CurrentWeapon->GetClass() == PistolWeapon.Get())
+		{
+			CurrentWeapon->AttachWeaponToCharacter(PistolAttachSocketName);
+		}
+
+		else
+		{
+			CurrentWeapon->AttachWeaponToCharacter(BackWeaponAttachSocketName);
+		}
+		CurrentWeapon = nullptr;
+		return;
+	}
+
 	CurrentWeapon = NewWeapon;
 	if (NewWeapon)
 	{
-		CurrentWeapon->SetOwningPawn(this);
-		CurrentWeapon->OnEquip();
 
-		if (PrevWeapon)
+		if (!PrevWeapon)
+		{
+			CurrentWeapon->OnEquip();
+		}
+
+		if (PrevWeapon && PrevWeapon->GetClass() == ShotgunWeapon.Get())
 		{
 			PrevWeapon->SetOwningPawn(this);
-			PrevWeapon->AttachWeaponToCharacter(BackWeaponAttachSocketName);
+			PrevWeapon->OnUnEquip(ShotgunAttachSocketName);
 		}
+
+		else if (PrevWeapon && PrevWeapon->GetClass() == PistolWeapon.Get())
+		{
+			PrevWeapon->SetOwningPawn(this);
+			PrevWeapon->OnUnEquip(PistolAttachSocketName);
+		}
+
+		else if (PrevWeapon && PrevWeapon->GetClass() != ShotgunWeapon.Get() && PrevWeapon->GetClass() != PistolWeapon.Get())
+		{
+			PrevWeapon->SetOwningPawn(this);
+			PrevWeapon->OnUnEquip(BackWeaponAttachSocketName);
+		}
+
 	}
 }
 
 void ACSCharacter::OnRep_CurrentWeapon(ACSWeapon* NewWeapon)
 {
-	//SetCurrentWeapon(NewWeapon);
+	SetCurrentWeapon(NewWeapon);
 }
 
 
 // Equip weapon from first slot
 void ACSCharacter::GetFirstWeaponSlot()
 {
-	if (Weapons[0])
+	if (LightSlot)
 	{
-		EquipWeapon(Weapons[0], Weapons[1]);
+		// if we have current weapon, then we just swap it with our new weapon
+		// else if we came from unarmed state, then we just equip our new weapon
+		(CurrentWeapon && !ReloadingNow && !EquipingNow) ? EquipWeapon(Weapons[0], CurrentWeapon) : EquipWeapon(Weapons[0]);
 	}
 }
 
 void ACSCharacter::GetSecondWeaponSlot()
 {
-	if (Weapons[1])
+	if (MiddleSlot)
 	{
-		EquipWeapon(Weapons[1], Weapons[0]);
+		// if we have current weapon, then we just swap it with our new weapon
+		// else if we came from unarmed state, then we just equip our new weapon
+		(CurrentWeapon && !ReloadingNow && !EquipingNow) ? EquipWeapon(Weapons[1], CurrentWeapon) : EquipWeapon(Weapons[1]);
 	}
 }
 
-void ACSCharacter::AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon)
+void ACSCharacter::GetThirdWeaponSlot()
 {
-	if (NewWeapon)
+	if (HardSlot)
 	{
-		NewWeapon->OnEnterInventory(this);
-		Weapons.AddUnique(NewWeapon);
-		Weapons.AddUnique(SecondWeapon);
+		// if we have current weapon, then we just swap it with our new weapon
+		// else if we came from unarmed state, then we just equip our new weapon
+		(CurrentWeapon && !ReloadingNow && !EquipingNow) ? EquipWeapon(Weapons[2], CurrentWeapon) : EquipWeapon(Weapons[2]);
+	}
+}
 
-		if (Weapons.Num() > 0 && CurrentWeapon == nullptr)
+void ACSCharacter::DropWeapon()
+{
+	if (CurrentWeapon && !ReloadingNow && !EquipingNow)
+	{
+		if (CurrentWeapon->OnDropping())
 		{
-			if (NewWeapon == Weapons[0])
+			if (CurrentWeapon->GetClass() == PistolWeapon.Get())
 			{
-				EquipWeapon(NewWeapon, SecondWeapon);
+				LightSlot = nullptr;
 			}
+			else if (CurrentWeapon->GetClass() == ShotgunWeapon.Get())
+			{
+				MiddleSlot = nullptr;
+			}
+			else
+			{
+				HardSlot = nullptr;
+			}
+			EquipWeapon();
 		}
+	}
+}
+
+void ACSCharacter::AddWeapon(ACSWeapon* FirstWeapon, ACSWeapon* SecondWeapon, ACSWeapon* ThirdWeapon)
+{
+	if (LightSlot && MiddleSlot && HardSlot)
+	{
+		return;
+	}
+
+	if (FirstWeapon)
+	{
+		FirstWeapon->OnEnterInventory(this);
+
+		if (FirstWeapon->GetClass() == PistolWeapon.Get())
+		{
+			LightSlot = FirstWeapon;
+			Weapons[0] = LightSlot;
+		}
+
+		else if (FirstWeapon->GetClass() == ShotgunWeapon.Get())
+		{
+			MiddleSlot = FirstWeapon;
+			Weapons[1] = MiddleSlot;
+		}
+
+		else
+		{
+			HardSlot = FirstWeapon;
+			Weapons[2] = HardSlot;
+		}
+
+		if (CurrentWeapon)
+		{
+			EquipWeapon(FirstWeapon, CurrentWeapon);
+		}
+		else
+		{
+			EquipWeapon(FirstWeapon);
+		}
+
 	}
 }
 
@@ -500,6 +697,21 @@ bool ACSCharacter::isMoving()
 		return false;
 	}
 	return true;
+}
+
+ACSWeapon* ACSCharacter::GetLightWeaponSlot() const
+{
+	return LightSlot;
+}
+
+ACSWeapon* ACSCharacter::GetMiddleWeaponSlot() const
+{
+	return MiddleSlot;
+}
+
+ACSWeapon* ACSCharacter::GetHardWeaponSlot() const
+{
+	return HardSlot;
 }
 
 // Called every frame
@@ -531,16 +743,10 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	PlayerInputComponent->BindAction("Zoom", IE_Pressed, this, &ACSCharacter::BeginZoom);
 	PlayerInputComponent->BindAction("Zoom", IE_Released, this, &ACSCharacter::EndZoom);
 
-	if (CurrentWeapon && ShotgunWeapon && (CurrentWeapon->GetClass() == ShotgunWeapon.Get()))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Shotgun"));
-		PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ACSCharacter::StartFire);
-	}
-	else
-	{
-		PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ACSCharacter::StartFire);
-		PlayerInputComponent->BindAction("Fire", IE_Released, this, &ACSCharacter::StopFire);
-	}
+	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &ACSCharacter::StartFire);
+	PlayerInputComponent->BindAction("Fire", IE_Released, this, &ACSCharacter::StopFire);
+
+	PlayerInputComponent->BindAction("Fire_Shotgun", IE_Released, this, &ACSCharacter::FireShotgun);
 
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &ACSCharacter::BeginSprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &ACSCharacter::EndSprint);
@@ -549,6 +755,9 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 	PlayerInputComponent->BindAction("First Weapon", IE_Pressed, this, &ACSCharacter::GetFirstWeaponSlot);
 	PlayerInputComponent->BindAction("Second Weapon", IE_Pressed, this, &ACSCharacter::GetSecondWeaponSlot);
+	PlayerInputComponent->BindAction("Third Weapon", IE_Pressed, this, &ACSCharacter::GetThirdWeaponSlot);
+
+	PlayerInputComponent->BindAction("Drop Weapon", IE_Pressed, this, &ACSCharacter::DropWeapon);
 }
 
 FVector ACSCharacter::GetPawnViewLocation() const
@@ -627,10 +836,8 @@ void ACSCharacter::GetLifetimeReplicatedProps(TArray < class FLifetimeProperty >
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(ACSCharacter, CurrentWeapon);
-	DOREPLIFETIME(ACSCharacter, BackWeapon);
 	DOREPLIFETIME(ACSCharacter, StarterWeaponClasses);
 	DOREPLIFETIME(ACSCharacter, Weapons);
-	DOREPLIFETIME(ACSCharacter, WeaponIndex);
 	DOREPLIFETIME(ACSCharacter, ReloadingNow);
 	DOREPLIFETIME(ACSCharacter, bDied);
 	DOREPLIFETIME(ACSCharacter, bIsRagdoll);

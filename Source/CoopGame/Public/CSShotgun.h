@@ -19,7 +19,7 @@ class COOPGAME_API ACSShotgun : public ACSWeapon
 public:
 	ACSShotgun();
 
-	bool IsFireNow;
+	bool IsAbleToFire;
 
 protected:
 
@@ -37,14 +37,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
 	float MaxRandomDeviation;
 
-	float FireShotgunDelay;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
+	float FireDelay;
 
-	bool IsAbleToFire;
+	UPROPERTY(BlueprintReadOnly)
+	bool ShotgunFireNow;
 
 	FTimerHandle TimerHandle_FireShotgunDelay;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundBase* ShotgunReloadSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Anim")
+	UAnimMontage* FireAnimation;
 
 protected:
 	virtual void Fire() override;
@@ -62,4 +67,9 @@ protected:
 
 	FVector CalculateDeviation();
 	
+private:
+
+	float PlayFireAnimation(UAnimMontage* Animation, float InPlayRate = 1.f, FName StartSectionName = NAME_None);
+
+	void StopFireAnimation(UAnimMontage* Animation);
 };

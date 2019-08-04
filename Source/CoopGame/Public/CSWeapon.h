@@ -7,6 +7,7 @@
 #include "CSWeapon.generated.h"
 
 class USkeletalMeshComponent;
+class USphereComponent;
 class UDamageType;
 class UParticleSystem;
 class UCameraShake;
@@ -40,11 +41,17 @@ public:
 
 	virtual void SetOwningPawn(ACSCharacter* Character);
 
+	virtual ACSCharacter* GetOwningPawn() const;
+
 	virtual void OnEquip();
+
+	virtual void OnUnEquip(FName SocketName);
 
 	virtual void OnEnterInventory(ACSCharacter* NewOwner);
 
 	virtual void AttachWeaponToCharacter(FName SocketName);
+
+	virtual bool OnDropping();
 
 	/*  Ammo Info  */
 	virtual int32 GetCountOfBulletsInMagazine() const;
@@ -66,7 +73,7 @@ protected:
 
 	void PlayFireSoundEffect();
 
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	UFUNCTION(BlueprintCallable)
 	virtual void Fire();
 
 	UFUNCTION(Server, Reliable, WithValidation)
@@ -100,7 +107,21 @@ protected:
 
 	virtual void OnEquipFinished();
 
+	virtual void OnEquipStopAnimation();
+
+	UFUNCTION()
+	virtual void OnUnEquipStopAnimation(FName SocketName);
+
 	virtual void DetachWeaponFromCharacter();
+
+	/*  Pickup  */
+
+	UFUNCTION()
+	virtual void OnOverlapped(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	virtual bool CanPickUp();
+
+	void HandlePickupWeapon(ACSCharacter* Character, ACSWeapon* Weapon);
 
 	/*  Net  */
 
@@ -117,35 +138,49 @@ protected:
 
 protected:
 
-	UPROPERTY(Transient, ReplicatedUsing = OnRep_MyCharacter, EditDefaultsOnly, BlueprintReadOnly, Category = "Player")
+	/*  Base Weapon  Info  */
+	UPROPERTY(Transient, ReplicatedUsing = OnRep_MyCharacter, EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
 	ACSCharacter* Character;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Components")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
+	FName WeaponName;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon Base Info")
+	TSubclassOf<ACSWeapon> WeaponType;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Base Info")
 	USkeletalMeshComponent* SkeletalMeshComponent;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Base Info")
+	USphereComponent* SphereComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
 	TSubclassOf<UDamageType> DamageType;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
 	FName MuzzleSocketName;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
 	FName TracerTargetName;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	/*  VFX  */
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
 	UParticleSystem* MuzzleEffect;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
 	UParticleSystem* ImpactEffect;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
 	UParticleSystem* FleshImpactEffect;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "VFX")
 	UParticleSystem* TracerEffect;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	UPROPERTY(EditDefaultsOnly, Category = "VFX")
 	TSubclassOf<UCameraShake> FireCameraShake;
+
+	/*  Sounds  */
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundBase* FireSound;
@@ -165,39 +200,54 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundBase* EquipWeaponSound;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
+	USoundBase* UnEquipWeaponSound;
+
+	/*  Shooting  */
+
+	UPROPERTY(ReplicatedUsing = OnRep_HitScanTrace)
+	FHitScanTrace HitScanTrace;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Shooting")
 	float BaseDamage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Shooting")
+	float RateOfFire;
 
 	FTimerHandle TimerHandle_TimeBetweenShots;
 
 	float LastFireTime;
 
-	/* Bullets per minute fired by weapon */
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
-	float RateOfFire;
-
-	/* Derived from RateOfFire*/
 	float TimeBetweenShots;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	/*  Ammo  */
+
+	UPROPERTY(EditDefaultsOnly, Category = "Ammo")
 	int32 MagazineCapacity;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	UPROPERTY(EditDefaultsOnly, Category = "Ammo")
 	int32 MaxBullets;
 
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Ammo")
 	int32 CountOfBulletsInMagazine;
 
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Ammo")
 	int32 CountOfBulletsOnCharacter;
+
+	/*  Reloading  */
 
 	float ReloadingTimeRifleHipAndIronsights;
 
 	FTimerHandle TimerHandle_ReloadingTime;
 
-	UPROPERTY(ReplicatedUsing=OnRep_HitScanTrace)
-	FHitScanTrace HitScanTrace;
+	/*  Pickup  */
 
+	bool DoesHaveOwner;
+
+	/*  Drop  Weapon  */
+
+	UPROPERTY(EditDefaultsOnly, Category = "Drop Weapon")
+	float ImpulseMultiplier;
 
 	/*  Animation  */
 	UPROPERTY(EditDefaultsOnly, Category = "Anim")
@@ -206,9 +256,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Anim")
 	UAnimMontage* EquipAnim;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Anim")
+	UAnimMontage* UnEquipAnim;
+
 	bool bPendingEquip;
 
-	FTimerHandle TimerHandle_EquipWeaponTime;;
+	FTimerHandle TimerHandle_EquipWeaponTime;
+
+	FTimerHandle TimerHandle_EquipWeaponStopAnimationTime;
+
+	//FDelegateBase TimerDelegate_UnEquipWeapon;
+
+	FTimerHandle TimerHandle_UnEquipWeaponStopAnimationTime;
 
 public:
 	virtual void StartFire();
@@ -222,10 +281,13 @@ public:
 	virtual bool CanShoot();
 
 public:
-	UPROPERTY(Transient, ReplicatedUsing = OnRep_Reload)
+	UPROPERTY(Transient, ReplicatedUsing = OnRep_Reload, BlueprintReadOnly)
 	bool ReloadNow;
 
+	UPROPERTY(BlueprintReadOnly)
 	bool IsFireNow;
+
+	bool IsAbleToFire;
 
 private:
 	float AnimDuration;

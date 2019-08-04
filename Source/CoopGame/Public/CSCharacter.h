@@ -13,6 +13,8 @@ class ACSWeapon;
 class UCShealthComponent;
 class USoundCue;
 class UAudioComponent;
+class ACSShotgun;
+class ACSPistol;
 
 UCLASS()
 class COOPGAME_API ACSCharacter : public ACharacter
@@ -23,17 +25,45 @@ public:
 	// Sets default values for this character's properties
 	ACSCharacter();
 
-	UPROPERTY(VisibleDefaultsOnly, Category = "Player")
+	/*  Weapon Sockets  */
+
+	// Weapon on hands
+	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
 	FName WeaponAttachSocketName;
 
-	UPROPERTY(VisibleDefaultsOnly, Category = "Player")
+	// Pistol
+	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
+	FName PistolAttachSocketName;
+
+	// Shotgun
+	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
+	FName ShotgunAttachSocketName;
+
+	// Rifle / Grenade launcher
+	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
 	FName BackWeaponAttachSocketName;
+
+	/*  Weapons For Pickup  */
+
+	// check if we're equiping shotgun for animation purposes
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSShotgun> ShotgunWeapon;
+
+	// check if we're equiping pistol for animation purposes
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSPistol> PistolWeapon;
+
+	UPROPERTY(Transient, ReplicatedUsing = OnRep_CurrentWeapon, BlueprintReadOnly, Category = "Weapons")
+	ACSWeapon* CurrentWeapon;
+
+	UPROPERTY(Replicated, BlueprintReadOnly)
+	bool ReloadingNow;
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	/*  Weapon initialization  */
+	/*  Weapon initialization(when we're spawning with all weapons)  */
 
 	void InitAllWeapons();
 
@@ -70,6 +100,8 @@ protected:
 	void SetFOVCameraView(float DeltaTime);
 
 	/*  Fire  */
+
+	void FireShotgun();
 
 	void StartFire();
 
@@ -113,18 +145,24 @@ protected:
 
 	/*  Equiping Weapon  */
 
-	void EquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
+	void EquipWeapon(ACSWeapon* NewWeapon = nullptr, ACSWeapon* PrevWeapon = nullptr, ACSWeapon* ThirdWeapon = nullptr);
+
+	void EquipWeaponAfterPickup(ACSWeapon* NewWeapon, ACSWeapon* CurrentWeapon = nullptr);
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerEquipWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
 
-	void SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr);
+	void SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon = nullptr, ACSWeapon* ThirdWeapon = nullptr);
 
 	void GetFirstWeaponSlot();
 
 	void GetSecondWeaponSlot();
 
-	void AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon);
+	void GetThirdWeaponSlot();
+
+	/*  Drop Weapon  */
+
+	void DropWeapon();
 
 	/*  Health and Death  */
 
@@ -145,7 +183,7 @@ protected:
 
 protected:
 
-	/*  Camera  */
+	/*  Components  */
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UCameraComponent* CameraComponent;
@@ -153,60 +191,85 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USpringArmComponent* SpringArmComponent;
 
-	// Default field of view
-	float DefaultFOV;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Player")
-	float ZoomedFOV;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Player")
-	float SprintFOV;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Player", meta = (ClampMin = 0.1, ClampMax = 100))
-	float ZoomInterpSpeed;
-
-	/*  AudioComponent and Sounds  */
-
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UAudioComponent* AudioComponent;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
-	USoundBase* StepSound;
+	/*  Zooming  */
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
-	USoundCue* DeathSound;
+	bool bWantsToZoom;
+
+	float DefaultFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Zooming")
+	float ZoomedFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Zooming")
+	float SprintFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Zooming")
+	float SniperRifleFOV;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Zooming", meta = (ClampMin = 0.1, ClampMax = 100))
+	float ZoomInterpSpeed;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool IsSniperRifleZooming;
 
 	/*  Weapons  */
 
-	UPROPERTY(Replicated, EditDefaultsOnly, Category = "Weapon")
+	UPROPERTY(Replicated)
+	TArray<ACSWeapon*> Weapons;
+
+	UPROPERTY(Replicated, EditDefaultsOnly, Category = "Weapons")
 	TArray<TSubclassOf<ACSWeapon>> StarterWeaponClasses;
 
-	UPROPERTY(Transient, ReplicatedUsing = OnRep_CurrentWeapon, BlueprintReadOnly, Category = "Weapon")
-	ACSWeapon* CurrentWeapon;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSWeapon> FirstWeaponClass;
 
-	UPROPERTY(Replicated)
-	ACSWeapon* BackWeapon;
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSWeapon> SecondWeaponClass;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSWeapon> ThirdWeaponClass;
 
-	// check if we're equiping shotgun for animation purposes
+	// check if we're equiping sniper rifle for zooming purposes
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSWeapon> SniperRifleWeapon;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
-	TSubclassOf<ACSWeapon> ShotgunWeapon;
+	FActorSpawnParameters SpawnParams;
+
+	/*  Weapon Slots  */
+
+	// pistol [waist]
+	ACSWeapon* LightSlot;
+
+	// shotgun / uzi(maybe) [left leg]
+	ACSWeapon* MiddleSlot;
+
+	// rifle / grenade laucher [back]
+	ACSWeapon* HardSlot;
 
 	UPROPERTY(BlueprintReadOnly)
 	bool IsShotgunEquiped;
 
-	/*  Reloading, Sprinting, Zooming, Dying bools  */
+	UPROPERTY(BlueprintReadOnly)
+	bool IsPistolEquiped;
 
-	UPROPERTY(Replicated, VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
-	bool ReloadingNow;
+	/*  Gameplay bools  */
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(BlueprintReadOnly)
+	bool IsUnarmed;
+
+	UPROPERTY(BlueprintReadOnly)
+	bool EquipingNow;
+
+	UPROPERTY(BlueprintReadOnly)
 	bool ChangingWeaponNow;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
+	UPROPERTY(BlueprintReadOnly)
 	bool IsZoomingNow;
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
+	UPROPERTY(BlueprintReadOnly)
 	bool IsSprintingNow;
 
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Player")
@@ -214,22 +277,22 @@ protected:
 
 	/*  Sprint and Walking  */
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Character Movement: Walking")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sprint and Walking")
 	float SprintMultiplier;
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
 	float DefaultWalkSpeed;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Sprint")
+	UPROPERTY(EditDefaultsOnly, Category = "Sprint and Walking")
 	float DefaultSprintProgress;
 
 	UPROPERTY(BlueprintReadOnly)
 	float CurrentSprintProgress;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Sprint")
+	UPROPERTY(EditDefaultsOnly, Category = "Sprint and Walking")
 	float SprintDecrease;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Sprint")
+	UPROPERTY(EditDefaultsOnly, Category = "Sprint and Walking")
 	float SprintIncrease;
 
 	UPROPERTY(BlueprintReadOnly)
@@ -237,18 +300,10 @@ protected:
 
 	/*  Health  */
 
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Health")
 	UCSHealthComponent* HealthComponent;
 
-	bool bWantsToZoom;
-
-	UPROPERTY(Replicated)
-	TArray<ACSWeapon*> Weapons;
-
-	FActorSpawnParameters SpawnParams;
-
-	UPROPERTY(Replicated)
-	uint8 WeaponIndex;
+	/*  Time  */
 
 	FTimerHandle TimerHandle_RemoveWeaponTime;
 
@@ -259,6 +314,8 @@ protected:
 	float EquipTime;
 
 	float BreakTime;
+
+	/*  Physics  */
 
 	UPROPERTY(Replicated)
 	bool bIsRagdoll;
@@ -276,6 +333,10 @@ public:
 
 	void EndReloading();
 
+	void EndEquiping();
+
+	void EndUnEquiping();
+
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerEndReloading();
 
@@ -283,4 +344,13 @@ public:
 
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Player")
 	bool IsFiringNow;
+
+	// Weapon slots
+	ACSWeapon* GetLightWeaponSlot() const;
+
+	ACSWeapon* GetMiddleWeaponSlot() const;
+
+	ACSWeapon* GetHardWeaponSlot() const;
+
+	void AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon = nullptr, ACSWeapon* ThirdWeapon = nullptr);
 };

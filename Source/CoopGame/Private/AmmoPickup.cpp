@@ -9,7 +9,6 @@
 
 ACSWeapon* AAmmoPickup::GetCharacterWeaponByAmmoType(TArray<ACSWeapon*> CharacterWeapons)
 {
-	//UE_LOG(LogTemp, Warning, TEXT("%s"), *(Cast<ACSWeapon>(AmmoType)->GetClass()->GetName()));
 	for (ACSWeapon* Weapon : CharacterWeapons)
 	{
 		// Comparing AmmoType object class(defined in editor) with each object classes from overlapped character Weapons array
@@ -19,6 +18,32 @@ ACSWeapon* AAmmoPickup::GetCharacterWeaponByAmmoType(TArray<ACSWeapon*> Characte
 		}
 	}
 	return nullptr;
+}
+
+bool AAmmoPickup::AddAmmo(ACSWeapon* Weapon, int32 QuantityOfAmmo)
+{
+	if (Weapon->GetCountOfBulletsOnCharacter() < Weapon->GetMaxBullets())
+	{
+		int32 AmmoOnCharacter = Weapon->GetCountOfBulletsOnCharacter();
+		int32 MaxAmmo = Weapon->GetMaxBullets();
+
+		if ((AmmoOnCharacter + QuantityOfAmmo) > MaxAmmo)
+		{
+
+			Weapon->SetCountOfBulletsOnCharacter(MaxAmmo - AmmoOnCharacter);
+		}
+		else
+		{
+			Weapon->SetCountOfBulletsOnCharacter(QuantityOfAmmo);
+		}
+
+		if (PickupSound)
+		{
+			UGameplayStatics::PlaySound2D(this, PickupSound);
+		}
+		return true;
+	}
+	return false;
 }
 
 void AAmmoPickup::OnOverlapped(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
@@ -33,29 +58,8 @@ void AAmmoPickup::OnOverlapped(UPrimitiveComponent* OverlappedComponent, AActor*
 			ACSWeapon* Weapon = GetCharacterWeaponByAmmoType(CharacterWeapons);
 			if (Weapon)
 			{
-				if (Weapon->GetCountOfBulletsOnCharacter() < Weapon->GetMaxBullets())
+				if (AddAmmo(Weapon))
 				{
-					int32 AmmoOnCharacter = Weapon->GetCountOfBulletsOnCharacter();
-					int32 MaxAmmo = Weapon->GetMaxBullets();
-
-					UE_LOG(LogTemp, Warning, TEXT("on character %d"), AmmoOnCharacter);
-					UE_LOG(LogTemp, Warning, TEXT("max ammo %d"), MaxAmmo);
-
-					if ((AmmoOnCharacter + QuantityOfAmmo) > MaxAmmo)
-					{
-						
-						Weapon->SetCountOfBulletsOnCharacter(MaxAmmo - AmmoOnCharacter);
-					}
-					else
-					{
-						Weapon->SetCountOfBulletsOnCharacter(QuantityOfAmmo);
-					}
-
-					if (PickupSound)
-					{
-						UGameplayStatics::PlaySound2D(this, PickupSound);
-					}
-
 					Destroy();
 				}
 			}

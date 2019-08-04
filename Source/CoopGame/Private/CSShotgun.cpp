@@ -7,10 +7,12 @@
 #include "CoopGame.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Kismet/GameplayStatics.h"
+#include "..\Public\CSCharacter.h"
+#include "Animation/AnimMontage.h"
 
 ACSShotgun::ACSShotgun()
 {
-	BaseDamage = 500.0f;
+	BaseDamage = 200.0f;
 	RateOfFire = 100;
 
 	MagazineCapacity = 9;
@@ -25,11 +27,13 @@ ACSShotgun::ACSShotgun()
 	MinRandomDeviation = -300.0f;
 	MaxRandomDeviation = 300.0f;
 
-	FireShotgunDelay = 1.300f;
+	FireDelay = 1.300f;
 
 	IsAbleToFire = true;
 
 	IsFireNow = false;
+
+	ReloadNow = false;
 }
 
 void ACSShotgun::Fire()
@@ -45,7 +49,13 @@ void ACSShotgun::Fire()
 
 		if (Owner)
 		{
+			if (Character && FireAnimation)
+			{
+				FireDelay = Character->PlayAnimMontage(FireAnimation);
+			}
+
 			IsAbleToFire = false;
+			IsFireNow = true;
 
 			QuantityOfLineTraces = FMath::RandRange(MinQuantityOfLineTraces, MaxQuantityOfLineTraces);
 
@@ -56,15 +66,13 @@ void ACSShotgun::Fire()
 			FVector ShotDirection = EyeRotation.Vector();
 			FVector TraceEnd = EyeLocation + (ShotDirection * 5000);
 
-			IsFireNow = true;
-
 			CountOfBulletsInMagazine--;
 
 			PlayFireSoundEffect();
 			PlayFireEffects(TraceEnd);
 
 			//GetWorld()->GetTimerManager().SetTimer(TimerHandle_FireShotgunDelay, this, &ACSShotgun::StopFire, FireShotgunDelay, false);
-			GetWorld()->GetTimerManager().SetTimer(TimerHandle_FireShotgunDelay,this,&ACSShotgun::ShotgunAbleToFire,FireShotgunDelay,false);
+			GetWorld()->GetTimerManager().SetTimer(TimerHandle_FireShotgunDelay,this,&ACSShotgun::ShotgunAbleToFire,FireDelay,false);
 
 			for (int i = 0; i < QuantityOfLineTraces; i++)
 			{
@@ -130,12 +138,14 @@ void ACSShotgun::StartFire()
 
 void ACSShotgun::StopFire()
 {
+	
+	
 	IsFireNow = false;
 }
 
 bool ACSShotgun::CanShoot()
 {
-	if (Super::CanShoot() && IsAbleToFire)
+	if (Super::CanShoot() && IsAbleToFire && !IsFireNow)
 	{
 		return true;
 	}
@@ -146,7 +156,13 @@ void ACSShotgun::ShotgunAbleToFire()
 {
 	IsFireNow = false;
 	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_FireShotgunDelay);
+	if (Character)
+	{
+		Character->IsFiringNow = false;
+	}
+
 	IsAbleToFire = true;
+	
 }
 
 FVector ACSShotgun::CalculateDeviation()

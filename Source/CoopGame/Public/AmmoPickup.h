@@ -32,6 +32,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ammo")
 	TSubclassOf<ACSWeapon> AmmoType;
 
+	virtual bool AddAmmo(ACSWeapon* Weapon)
+	{
+		return AddAmmo(Weapon, QuantityOfAmmo);
+	}
+
+	bool AddAmmo(ACSWeapon* Weapon, int32 QuantityOfAmmo);
+
 
 
 protected:

@@ -2,7 +2,10 @@
 
 
 #include "..\Public\CSWeapon.h"
+#include "..\Public\CSPistol.h"
+#include "..\Public\CSShotgun.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/SphereComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/GameplayStatics.h"
 #include "Particles/ParticleSystem.h"
@@ -31,6 +34,13 @@ ACSWeapon::ACSWeapon()
 	SkeletalMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Skeletal Mesh Component"));
 	RootComponent = SkeletalMeshComponent;
 
+	SphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere Comp"));
+	SphereComponent->SetSphereRadius(50.0f);
+	SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &ACSWeapon::OnOverlapped);
+	SphereComponent->SetupAttachment(SkeletalMeshComponent);
+
+	WeaponName = "Assault Rifle";
+
 	MuzzleSocketName = "Muzzle Socket";
 	TracerTargetName = "Target";
 
@@ -52,16 +62,20 @@ ACSWeapon::ACSWeapon()
 
 	SetReplicates(true);
 	bNetUseOwnerRelevancy = true;
+
+	DoesHaveOwner = false;
+
+	ImpulseMultiplier = 1500.f;
 }
 
 void ACSWeapon::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TimeBetweenShots = 60 / RateOfFire;
-	//Character = Cast<ACSCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
+	SkeletalMeshComponent->SetSimulatePhysics(true);
+	SkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
-	UE_LOG(LogTemp, Warning, TEXT("%d/%d"), CountOfBulletsInMagazine, CountOfBulletsOnCharacter);
+	TimeBetweenShots = 60 / RateOfFire;
 }
 
 // trace the world from eyes of actor to crosshair location(screen center)
@@ -238,7 +252,7 @@ bool ACSWeapon::CheckForAmmo()
 
 bool ACSWeapon::CanReload()
 {
-	if (CountOfBulletsInMagazine < MagazineCapacity && CountOfBulletsOnCharacter > 0)
+	if (CountOfBulletsInMagazine < MagazineCapacity && CountOfBulletsOnCharacter > 0 && !bPendingEquip)
 	{
 		return true;
 	}
@@ -256,21 +270,19 @@ bool ACSWeapon::CanShoot()
 
 void ACSWeapon::Reload(bool bFromReplication)
 {
-	if (!bFromReplication && Role < ROLE_Authority)
+	/*if (!bFromReplication && Role < ROLE_Authority)
 	{
 		ServerReload();
-	}
+	}*/
 
-	if (bFromReplication || CanReload())
-	{
-		ReloadNow = true;
+	/*if (bFromReplication || CanReload())
+	{*/
 		float AnimDuration = PlayWeaponAnimations(ReloadAnim);
+
+		ReloadNow = true;
+		Character->ReloadingNow = ReloadNow;
+
 		GetWorldTimerManager().SetTimer(TimerHandle_ReloadingTime, this, &ACSWeapon::ReloadingEnd, AnimDuration, true);
-	
-		if (ReloadMagazineSound)
-		{
-			UGameplayStatics::PlaySound2D(this, ReloadMagazineSound);
-		}
 
 		int32 AmmoToReload = MagazineCapacity - CountOfBulletsInMagazine;
 		if (CountOfBulletsOnCharacter >= AmmoToReload)
@@ -283,7 +295,7 @@ void ACSWeapon::Reload(bool bFromReplication)
 			CountOfBulletsInMagazine += CountOfBulletsOnCharacter;
 			CountOfBulletsOnCharacter -= CountOfBulletsOnCharacter;
 		}
-	}
+	//}
 }
 
 void ACSWeapon::ServerReload_Implementation()
@@ -330,10 +342,21 @@ void ACSWeapon::SetOwningPawn(ACSCharacter* NewOwner)
 	}
 }
 
+ACSCharacter* ACSWeapon::GetOwningPawn() const
+{
+	if (Character)
+	{
+		return Character;
+	}
+	return nullptr;
+}
+
 void ACSWeapon::ReloadingEnd()
 {
-	ReloadNow = false;
+	Character->EndReloading();
 	StopWeaponAnimation(ReloadAnim);
+	ReloadNow = false;
+	Character->ReloadingNow = ReloadNow;
 }
 
 void ACSWeapon::PlayFireEffects(FVector TraceEnd)
@@ -379,14 +402,14 @@ void ACSWeapon::PlayImpactEffects(EPhysicalSurface SurfaceType, FVector ImpactPo
 		SelectedEffect = FleshImpactEffect;
 		if (BodyImpactSurfaceSound)
 		{
-			UGameplayStatics::PlaySound2D(this, BodyImpactSurfaceSound);
+			UGameplayStatics::PlaySoundAtLocation(this, BodyImpactSurfaceSound, ImpactPoint);
 		}
 		break;
 	default:
 		SelectedEffect = ImpactEffect;
 		if (DefaultImpactSurfaceSound)
 		{
-			UGameplayStatics::PlaySound2D(this, DefaultImpactSurfaceSound);
+			UGameplayStatics::PlaySoundAtLocation(this, DefaultImpactSurfaceSound, ImpactPoint);
 		}
 		break;
 	}
@@ -410,30 +433,65 @@ void ACSWeapon::PlayFireSoundEffect()
 
 void ACSWeapon::OnEquip()
 {
+	//float Duration = PlayWeaponAnimations(EquipAnim);
+	if (ReloadNow || bPendingEquip)
+	{
+		return;
+	}
+
 	bPendingEquip = true;
+
+	GetWorldTimerManager().SetTimer(TimerHandle_EquipWeaponStopAnimationTime, this, &ACSWeapon::OnEquipStopAnimation, 0.05f, false);
 
 	if (EquipWeaponSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, EquipWeaponSound, this->GetActorLocation());
+		UGameplayStatics::PlaySound2D(this, EquipWeaponSound);
 	}
 
-	float Duration = PlayWeaponAnimations(EquipAnim);
-	//EquipStartedTime = GetWorld()->TimeSeconds;
-	//EquipDuration = Duration;
-
-	GetWorldTimerManager().SetTimer(TimerHandle_EquipWeaponTime, this, &ACSWeapon::OnEquipFinished, Duration, false);
-}
-
-void ACSWeapon::OnEquipFinished()
-{
-	bPendingEquip = false;
-	GetWorldTimerManager().ClearTimer(TimerHandle_EquipWeaponTime);
-	StopWeaponAnimation(EquipAnim);
 	if (Character)
 	{
 		AttachWeaponToCharacter(Character->WeaponAttachSocketName);
 	}
+
+}
+
+void ACSWeapon::OnUnEquip(FName SocketName)
+{
+	//float Duration = PlayWeaponAnimations(UnEquipAnim);
+
+	FTimerDelegate UnEquipDelegate = FTimerDelegate::CreateUObject(this, &ACSWeapon::OnUnEquipStopAnimation, SocketName);
+	GetWorldTimerManager().SetTimer(TimerHandle_UnEquipWeaponStopAnimationTime, UnEquipDelegate, 0.05f, false);
+	//GetWorldTimerManager().SetTimer(TimerHandle_EquipWeaponStopAnimationTime, this, &ACSWeapon::OnUnEquipStopAnimation, Duration, false);
+}
+
+// Half of equip animation 
+// Here we detach previous weapon and attach new weapon
+void ACSWeapon::OnEquipFinished()
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle_EquipWeaponTime);
+	StopWeaponAnimation(EquipAnim);
+
 	
+}
+
+void ACSWeapon::OnEquipStopAnimation()
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle_EquipWeaponStopAnimationTime);
+	bPendingEquip = false;
+	StopWeaponAnimation(EquipAnim);
+	Character->EndEquiping();
+}
+
+void ACSWeapon::OnUnEquipStopAnimation(FName SocketName)
+{
+	AttachWeaponToCharacter(SocketName);
+	if (UnEquipWeaponSound)
+	{
+		UGameplayStatics::PlaySound2D(this, UnEquipWeaponSound);
+	}
+	GetWorldTimerManager().ClearTimer(TimerHandle_UnEquipWeaponStopAnimationTime);
+	StopWeaponAnimation(UnEquipAnim);
+	Character->EndUnEquiping();
 }
 
 void ACSWeapon::AttachWeaponToCharacter(FName SocketName)
@@ -448,11 +506,94 @@ void ACSWeapon::AttachWeaponToCharacter(FName SocketName)
 	}
 }
 
+bool ACSWeapon::OnDropping()
+{
+	DetachWeaponFromCharacter();
+	SkeletalMeshComponent->SetSimulatePhysics(true);
+	SkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	SkeletalMeshComponent->SetHiddenInGame(false);
+	SkeletalMeshComponent->SetActive(true);
+
+	SkeletalMeshComponent->AddImpulseAtLocation(Character->GetActorForwardVector() * ImpulseMultiplier, GetActorLocation());
+
+	// через секунду после выброса оружия, поставить setactive(false)
+
+	return true;
+}
+
 void ACSWeapon::DetachWeaponFromCharacter()
 {
 	SkeletalMeshComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 	SkeletalMeshComponent->SetHiddenInGame(true);
 	SkeletalMeshComponent->SetActive(false);
+}
+
+void ACSWeapon::OnOverlapped(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (OtherActor)
+	{
+		if (CanPickUp())
+		{
+			ACSCharacter* Character = Cast<ACSCharacter>(OtherActor);
+
+			if (Character && Character->CurrentWeapon && Character->CurrentWeapon->ReloadNow)
+			{
+				return;
+			}
+
+			SkeletalMeshComponent->SetSimulatePhysics(false);
+			SkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+			if (Character)
+			{
+				ACSWeapon* Weapon;
+
+				if (WeaponType.Get() == Character->PistolWeapon.Get())
+				{
+					Weapon = Character->GetLightWeaponSlot();
+				}
+
+				else if (WeaponType.Get() == Character->ShotgunWeapon.Get())
+				{
+					Weapon = Character->GetMiddleWeaponSlot();
+				}
+
+				else
+				{
+					Weapon = Character->GetHardWeaponSlot();
+				}
+
+				HandlePickupWeapon(Character, Weapon);
+			}
+
+		}
+	}
+}
+
+bool ACSWeapon::CanPickUp()
+{
+	if (GetOwningPawn())
+	{
+		return false;
+	}
+	return true;
+}
+
+void ACSWeapon::HandlePickupWeapon(ACSCharacter* Character, ACSWeapon* Weapon)
+{
+	// if character does not have that type of weapon
+	if (!Weapon)
+	{
+		
+		SphereComponent->SetActive(false);
+		Character->AddWeapon(this);
+	}
+	// if character has that type of weapon, but does not have max ammo, then we add ammo
+	else if (Weapon && Weapon->GetClass() == WeaponType.Get() && Weapon->GetCountOfBulletsOnCharacter() < Weapon->GetMaxBullets())
+	{
+		Weapon->SetCountOfBulletsOnCharacter(Weapon->GetCountOfBulletsOnCharacter() + MagazineCapacity);
+		Destroy();
+	}
 }
 
 void ACSWeapon::GetLifetimeReplicatedProps(TArray < class FLifetimeProperty >& OutLifetimeProps) const
@@ -462,10 +603,9 @@ void ACSWeapon::GetLifetimeReplicatedProps(TArray < class FLifetimeProperty >& O
 	DOREPLIFETIME_CONDITION(ACSWeapon, HitScanTrace, COND_SkipOwner);
 	DOREPLIFETIME_CONDITION(ACSWeapon, ReloadNow, COND_SkipOwner);
 
-	DOREPLIFETIME(ACSWeapon, Character);
 	DOREPLIFETIME(ACSWeapon, CountOfBulletsInMagazine);
 	DOREPLIFETIME(ACSWeapon, CountOfBulletsOnCharacter);
-	//DOREPLIFETIME(ACSWeapon, ReloadNow);
+	DOREPLIFETIME(ACSWeapon, Character);
 }
 
 void ACSWeapon::ClientReload_Implementation()
