@@ -12,28 +12,26 @@
 
 ACSShotgun::ACSShotgun()
 {
-	BaseDamage = 200.0f;
-	RateOfFire = 100;
+	BaseDamage = 2200.0f;
 
-	MagazineCapacity = 9;
-	MaxBullets = 54;
+	MagazineCapacity = 6;
+	MaxBullets = 100;
 
 	CountOfBulletsInMagazine = MagazineCapacity;
 	CountOfBulletsOnCharacter = MaxBullets;
 
-	MinQuantityOfLineTraces = 6;
-	MaxQuantityOfLineTraces = 15;
+	MinQuantityOfLineTraces = 5;
+	MaxQuantityOfLineTraces = 8;
 
-	MinRandomDeviation = -300.0f;
-	MaxRandomDeviation = 300.0f;
+	// Only for shotgun
+	MinRandomDeviation = -100.0f;
+	MaxRandomDeviation = 100.0f;
 
 	FireDelay = 1.300f;
 
+	FiringRange = 1500.0f;
+
 	IsAbleToFire = true;
-
-	IsFireNow = false;
-
-	ReloadNow = false;
 }
 
 void ACSShotgun::Fire()
@@ -64,7 +62,7 @@ void ACSShotgun::Fire()
 			Owner->GetActorEyesViewPoint(EyeLocation, EyeRotation);
 
 			FVector ShotDirection = EyeRotation.Vector();
-			FVector TraceEnd = EyeLocation + (ShotDirection * 5000);
+			FVector TraceEnd = EyeLocation + (ShotDirection * FiringRange) + CalculateSpread();
 
 			CountOfBulletsInMagazine--;
 
@@ -77,7 +75,7 @@ void ACSShotgun::Fire()
 			for (int i = 0; i < QuantityOfLineTraces; i++)
 			{
 				float TempDeviation = FMath::RandRange(MinRandomDeviation, MaxRandomDeviation);
-				FVector TraceEndPoint = TraceEnd + CalculateDeviation();
+				FVector TraceEndPoint = TraceEnd + ShotgunDeviation(MinRandomDeviation, MaxRandomDeviation);
 
 				EPhysicalSurface SurfaceType = SurfaceType_Default;
 
@@ -152,6 +150,17 @@ bool ACSShotgun::CanShoot()
 	return false;
 }
 
+FVector ACSShotgun::ShotgunDeviation(float MinDeviation, float MaxDeviation)
+{
+	float DeviationX = FMath::RandRange(MinDeviation, MaxDeviation);
+	float DeviationY = FMath::RandRange(MinDeviation, MaxDeviation);
+	float DeviationZ = FMath::RandRange(MinDeviation, MaxDeviation);
+
+	FVector Deviation = FVector(DeviationX, DeviationY, DeviationZ);
+
+	return Deviation;
+}
+
 void ACSShotgun::ShotgunAbleToFire()
 {
 	IsFireNow = false;
@@ -163,15 +172,4 @@ void ACSShotgun::ShotgunAbleToFire()
 
 	IsAbleToFire = true;
 	
-}
-
-FVector ACSShotgun::CalculateDeviation()
-{
-	float DeviationX = FMath::RandRange(MinRandomDeviation, MaxRandomDeviation);
-	float DeviationY = FMath::RandRange(MinRandomDeviation, MaxRandomDeviation);
-	float DeviationZ = FMath::RandRange(MinRandomDeviation, MaxRandomDeviation);
-
-	FVector Deviation = FVector(DeviationX, DeviationY, DeviationZ);
-
-	return Deviation;
 }

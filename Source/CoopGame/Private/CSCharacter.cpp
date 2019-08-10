@@ -11,13 +11,17 @@
 #include "..\Public\CSPistol.h"
 #include "..\Public\CSShotgun.h"
 #include "..\Public\CSShotgun.h"
+#include "..\Public\CSFlashlight.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "CoopGame.h"
-#include "..\Public\CSHealthComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "DrawDebugHelpers.h"
+
+#include "Components/AudioComponent.h"
+#include "Sound/SoundCue.h"
 
 // Sets default values
 ACSCharacter::ACSCharacter()
@@ -35,81 +39,59 @@ ACSCharacter::ACSCharacter()
 	CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera Component"));
 	CameraComponent->SetupAttachment(SpringArmComponent);
 
-	HealthComponent = CreateDefaultSubobject<UCSHealthComponent>(TEXT("Health Component"));
-
-	GetCapsuleComponent()->SetCollisionResponseToChannel(COLLISION_WEAPON, ECR_Ignore);
-
-	SprintFOV = 100.0f;
-	ZoomedFOV = 65.0f;
-	ZoomInterpSpeed = 20.0f;
-
-	WeaponAttachSocketName = "weapon_socket";
-	BackWeaponAttachSocketName = "back_weapon_socket";
-	PistolAttachSocketName = "pistol_socket";
-	ShotgunAttachSocketName = "shotgun_socket";
-
-	ReloadingNow = false;
-
-	ChangingWeaponNow = false;
-	EquipTime = 1.533f;
-
-	IsFiringNow = false;
-
-	SprintMultiplier = 1.2f;
-
-	DefaultWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
-
-	BreakTime = 5.f;
-
-	// Sprint Widget
-
-	DefaultSprintProgress = 100.0f;
-	CurrentSprintProgress = DefaultSprintProgress;
-
-	SprintDecrease = 0.05f;
-	SprintIncrease = 0.1f;
-
-	ShowSprintWidget = false;
-
-	IsSniperRifleZooming = false;
+	InitAllBaseCharacterFeatures();
 }
 
 // Called when the game starts or when spawned
 void ACSCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+}
 
-	DefaultFOV = CameraComponent->FieldOfView;
+void ACSCharacter::InitAllBaseCharacterFeatures()
+{
+	// BASE
+	PlayerMovementState = EPlayerMovementState::IDLE;
+	BreakTime = 5.f;
+	IsUnarmed = true;
 
-	HealthComponent->OnHealthChanged.AddDynamic(this, &ACSCharacter::OnHealthChanged);
+	// Item sockets
+	WeaponAttachSocketName = "weapon_socket";
+	BackWeaponAttachSocketName = "back_weapon_socket";
+	PistolAttachSocketName = "pistol_socket";
+	ShotgunAttachSocketName = "shotgun_socket";
+	FlashlightAttachSocketName = "flashlight_socket";
 
-	// Spawn weapons on the server ONLY
-	/*if (Role == ROLE_Authority)
-	{*/
-		// Init defaults weapons
-		//InitAllWeapons();
-	//}
-
-	/*Weapons.InsertZeroed(0, 1);
-	Weapons.InsertZeroed(1, 1);
-	Weapons.InsertZeroed(2, 1);*/
-
+	// Weapons array initialization
+	// Set weapon inventory capacity
 	Weapons.SetNum(3, false);
 
-	IsUnarmed = true;
+	// Camera settings on view changing
+	DefaultFOV = CameraComponent->FieldOfView;
+	SprintFOV = 100.0f;
+	ZoomedFOV = 65.0f;
+	ZoomInterpSpeed = 20.0f;
+
+	// Sprint Settings
+	DefaultSprintProgress = 100.0f;
+	CurrentSprintProgress = DefaultSprintProgress;
+	SprintMultiplier = 1.2f;
+	SprintDecrease = 0.05f;
+	SprintIncrease = 0.1f;
 }
 
-void ACSCharacter::InitAllWeapons()
-{
-	FActorSpawnParameters SpawnInfo;
-	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ACSWeapon* FirstWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(FirstWeaponClass, SpawnInfo);
-	ACSWeapon* SecondWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(SecondWeaponClass, SpawnInfo);
-	ACSWeapon* ThirdWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(ThirdWeaponClass, SpawnInfo);
-
-	AddWeapon(FirstWeaponSlot, SecondWeaponSlot, ThirdWeaponSlot);
-}
+// If you want spawn with all weapons
+//void ACSCharacter::InitAllWeapons()
+//{
+//	FActorSpawnParameters SpawnInfo;
+//	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+//
+//	ACSWeapon* FirstWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(FirstWeaponClass, SpawnInfo);
+//	ACSWeapon* SecondWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(SecondWeaponClass, SpawnInfo);
+//	ACSWeapon* ThirdWeaponSlot = GetWorld()->SpawnActor<ACSWeapon>(ThirdWeaponClass, SpawnInfo);
+//
+//	AddWeapon(FirstWeaponSlot, SecondWeaponSlot, ThirdWeaponSlot);
+//}
 
 void ACSCharacter::MoveForvard(float Value)
 {
@@ -142,6 +124,7 @@ void ACSCharacter::BeginCrouch()
 {
 	if (!IsSprintingNow)
 	{
+		IsCrouchingNow = true;
 		Crouch();
 	}
 }
@@ -150,6 +133,7 @@ void ACSCharacter::EndCrouch()
 {
 	if (!IsSprintingNow)
 	{
+		IsCrouchingNow = false;
 		UnCrouch();
 	}
 }
@@ -272,7 +256,7 @@ void ACSCharacter::FireShotgun()
 
 void ACSCharacter::StartFire()
 {
-	if (CurrentWeapon && !IsSprintingNow && !ChangingWeaponNow)
+	if (CurrentWeapon && !IsSprintingNow && !ChangingWeaponNow && !GettingHitNow)
 	{
 
 		if (CurrentWeapon->GetClass() != ShotgunWeapon.Get())
@@ -543,17 +527,17 @@ void ACSCharacter::SetCurrentWeapon(ACSWeapon* NewWeapon, ACSWeapon* PrevWeapon,
 	{
 		if (CurrentWeapon && CurrentWeapon->GetClass() == ShotgunWeapon.Get())
 		{
-			CurrentWeapon->AttachWeaponToCharacter(ShotgunAttachSocketName);
+			CurrentWeapon->AttachItemToCharacter(ShotgunAttachSocketName);
 		}
 
 		else if (CurrentWeapon && CurrentWeapon->GetClass() == PistolWeapon.Get())
 		{
-			CurrentWeapon->AttachWeaponToCharacter(PistolAttachSocketName);
+			CurrentWeapon->AttachItemToCharacter(PistolAttachSocketName);
 		}
 
 		else
 		{
-			CurrentWeapon->AttachWeaponToCharacter(BackWeaponAttachSocketName);
+			CurrentWeapon->AttachItemToCharacter(BackWeaponAttachSocketName);
 		}
 		CurrentWeapon = nullptr;
 		return;
@@ -626,6 +610,14 @@ void ACSCharacter::GetThirdWeaponSlot()
 	}
 }
 
+void ACSCharacter::FlashlightPowerOnOff()
+{
+	if (Flashlight)
+	{
+		Flashlight->PowerupFlashlight();
+	}
+}
+
 void ACSCharacter::DropWeapon()
 {
 	if (CurrentWeapon && !ReloadingNow && !EquipingNow)
@@ -647,6 +639,207 @@ void ACSCharacter::DropWeapon()
 			EquipWeapon();
 		}
 	}
+}
+
+void ACSCharacter::DrawDebugTraceLineForPickup(FVector& StartPoint, FVector& EndPoint)
+{
+	FVector EyeLocation;
+	FRotator EyeRotation;
+
+	FVector ShotDirection;
+
+	FVector TraceEnd;
+
+	if (!IsUnarmed)
+	{
+		EyeLocation = CurrentWeapon->GetSkeletalMeshComponent()->GetSocketLocation(CurrentWeapon->GetMuzzleSocket());
+		EyeRotation = CurrentWeapon->GetSkeletalMeshComponent()->GetSocketRotation(CurrentWeapon->GetMuzzleSocket());
+
+		ShotDirection = EyeRotation.Vector();
+
+		TraceEnd = EyeLocation + (ShotDirection * 2000);
+	}
+	else
+	{
+		GetActorEyesViewPoint(EyeLocation, EyeRotation);
+
+		ShotDirection = EyeRotation.Vector();
+
+		TraceEnd = EyeLocation + (ShotDirection * 600);
+	}
+
+	StartPoint = EyeLocation;
+	EndPoint = TraceEnd;
+}
+
+void ACSCharacter::GrabItem()
+{
+	FVector EyeLocation;
+	FVector TraceEnd;
+	
+	DrawDebugTraceLineForPickup(EyeLocation, TraceEnd);
+
+
+	FCollisionQueryParams TraceParams(FName(TEXT("InteractTrace")), true, NULL);
+	TraceParams.bTraceComplex = true;
+	TraceParams.bReturnPhysicalMaterial = true;
+
+	FHitResult HitResult = FHitResult(ForceInit);
+
+	bool IsHit;
+	
+	IsHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		EyeLocation,
+		TraceEnd,
+		ECC_GameTraceChannel3,
+		TraceParams
+	);
+
+	if (IsHit)
+	{
+		float DistanceBetween;
+		
+		DistanceBetween = FVector::Dist(EyeLocation, HitResult.GetActor()->GetActorLocation());
+
+		if (DistanceBetween <= 285.f)
+		{
+			GrabbedItem = HitResult.GetActor();
+			ACSItem* Temp = Cast<ACSItem>(GrabbedItem);
+			if (Temp)
+			{
+				Temp->PickupItem(this);
+			}
+		}
+	}
+}
+
+void ACSCharacter::ShowGrabItemWidget()
+{
+	FVector EyeLocation;
+	FVector TraceEnd;
+	DrawDebugTraceLineForPickup(EyeLocation, TraceEnd);
+
+	FCollisionQueryParams TraceParams(FName(TEXT("InteractTrace")), true, NULL);
+	TraceParams.bTraceComplex = true;
+	TraceParams.bReturnPhysicalMaterial = true;
+
+	FHitResult HitResult = FHitResult(ForceInit);
+
+	bool IsHit;
+
+	IsHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		EyeLocation,
+		TraceEnd,
+		ECC_GameTraceChannel3,
+		TraceParams
+	);
+
+	if (IsHit)
+	{
+		float DistanceBetween;
+
+		DistanceBetween = FVector::Dist(EyeLocation, HitResult.GetActor()->GetActorLocation());
+
+		if (DistanceBetween <= 285.f)
+		{
+			GrabbedItem = HitResult.GetActor();
+			ACSItem* Temp = Cast<ACSItem>(GrabbedItem);
+			if (Temp && Temp != CurrentWeapon && Temp != HardSlot)
+			{
+				ShowGrabWidget = true;
+			}
+			else if (Temp && Temp == CurrentWeapon)
+			{
+				ShowGrabWidget = false;
+			}
+			else
+			{
+				ShowGrabWidget = false;
+			}
+		}
+		else
+		{
+			ShowGrabWidget = false;
+		}
+	}
+	else
+	{
+		ShowGrabWidget = false;
+	}
+
+}
+
+void ACSCharacter::PlayHit(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser, bool bkilled)
+{
+	Super::PlayHit(DamageAmount, DamageEvent, EventInstigator, DamageCauser, bkilled);
+
+	if (!bkilled && (HitAnimation1 && HitAnimation2 && HitAnimation3 && HitAnimation4) && !GettingHitNow)
+	{
+		uint8 PickRandomAnimation = FMath::RandRange(1, 4);
+		float Duration;
+
+		switch (PickRandomAnimation)
+		{
+			case 1:
+				Duration = PlayAnimMontage(HitAnimation1);
+				PickedAnimationNumber = 1;
+				break;
+			case 2:
+				Duration = PlayAnimMontage(HitAnimation2);
+				PickedAnimationNumber = 2;
+				break;
+			case 3:
+				Duration = PlayAnimMontage(HitAnimation3);
+				PickedAnimationNumber = 3;
+				break;
+			case 4:
+				Duration = PlayAnimMontage(HitAnimation4);
+				PickedAnimationNumber = 4;
+				break;
+		}
+
+		if (TakeHitSound)
+		{
+			UGameplayStatics::SpawnSoundAttached(TakeHitSound, RootComponent, NAME_None, FVector::ZeroVector, EAttachLocation::SnapToTarget);
+		}
+
+		GettingHitNow = true;
+		GetWorldTimerManager().SetTimer(TimerHandle_GettingHitTime, this, &ACSCharacter::StopPlayHitAnimation, Duration);
+	}
+}
+
+void ACSCharacter::StopPlayHitAnimation()
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle_GettingHitTime);
+	switch (PickedAnimationNumber)
+	{
+		case 1:
+			StopAnimMontage(HitAnimation1);
+			break;
+		case 2:
+			StopAnimMontage(HitAnimation2);
+			break;
+		case 3:
+			StopAnimMontage(HitAnimation3);
+			break;
+		case 4:
+			StopAnimMontage(HitAnimation4);
+			break;
+	}
+	GettingHitNow = false;
+}
+
+void ACSCharacter::OnDeath(float DamageAmount, FDamageEvent const& DamageEvent, APawn* EventInstigator, AActor* DamageCauser)
+{
+	Super::OnDeath(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	if (DeathSound)
+	{
+		UGameplayStatics::SpawnSoundAttached(DeathSound, RootComponent, NAME_None, FVector::ZeroVector, EAttachLocation::SnapToTarget);
+	}
+	
 }
 
 void ACSCharacter::AddWeapon(ACSWeapon* FirstWeapon, ACSWeapon* SecondWeapon, ACSWeapon* ThirdWeapon)
@@ -692,7 +885,7 @@ void ACSCharacter::AddWeapon(ACSWeapon* FirstWeapon, ACSWeapon* SecondWeapon, AC
 
 bool ACSCharacter::isMoving()
 {
-	if (GetMovementComponent()->Velocity.Size() < 10.f)
+	if (GetMovementComponent()->Velocity.Size() == 0.0f)
 	{
 		return false;
 	}
@@ -714,14 +907,81 @@ ACSWeapon* ACSCharacter::GetHardWeaponSlot() const
 	return HardSlot;
 }
 
+void ACSCharacter::SetFlashlight(ACSFlashlight* Flashlight)
+{
+	this->Flashlight = Flashlight;
+}
+
 // Called every frame
 void ACSCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	SetFOVCameraView(DeltaTime);
+	if (IsAlive())
+	{
+		CheckPlayerState();
 
-	HandleSprintWidget(DeltaTime);
+		SetFOVCameraView(DeltaTime);
+
+		HandleSprintWidget(DeltaTime);
+
+		ShowGrabItemWidget();
+	}
+}
+
+EPlayerMovementState ACSCharacter::GetCurrentPlayerMovementState() const
+{
+	return PlayerMovementState;
+}
+
+void ACSCharacter::ClearWidgetsAfterDeath()
+{
+	ShowGrabWidget = false;
+	IsSniperRifleZooming = false;
+}
+
+void ACSCharacter::CheckPlayerState()
+{
+	if (isMoving())
+	{
+		if (IsCrouchingNow)
+		{
+			if (IsZoomingNow)
+			{
+				PlayerMovementState = EPlayerMovementState::CROUCHING_ZOOMING_MOVING;
+				return;
+			}
+			PlayerMovementState = EPlayerMovementState::CROUCHING_MOVING;
+		}
+		else if (!IsCrouchingNow && IsZoomingNow)
+		{
+			PlayerMovementState = EPlayerMovementState::ZOOMING_MOVING;
+		}
+		else if (!IsCrouchingNow && !IsZoomingNow)
+		{
+			PlayerMovementState = EPlayerMovementState::JOGGING;
+		}
+	}
+	else
+	{
+		if (IsCrouchingNow)
+		{
+			if (IsZoomingNow)
+			{
+				PlayerMovementState = EPlayerMovementState::CROUCHING_ZOOMING_IDLE;
+				return;
+			}
+			PlayerMovementState = EPlayerMovementState::CROUCHING;
+		}
+		else if (!IsCrouchingNow && IsZoomingNow)
+		{
+			PlayerMovementState = EPlayerMovementState::ZOOMING_IDLE;
+		}
+		else if (!IsCrouchingNow && !IsZoomingNow)
+		{
+			PlayerMovementState = EPlayerMovementState::IDLE;
+		}
+	}
 }
 
 // Called to bind functionality to input
@@ -758,6 +1018,11 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	PlayerInputComponent->BindAction("Third Weapon", IE_Pressed, this, &ACSCharacter::GetThirdWeaponSlot);
 
 	PlayerInputComponent->BindAction("Drop Weapon", IE_Pressed, this, &ACSCharacter::DropWeapon);
+
+	PlayerInputComponent->BindAction("Grab Item", IE_Pressed, this, &ACSCharacter::GrabItem);
+
+	PlayerInputComponent->BindAction("On/Off Flashlight", IE_Pressed, this, &ACSCharacter::FlashlightPowerOnOff);
+
 }
 
 FVector ACSCharacter::GetPawnViewLocation() const
@@ -773,53 +1038,6 @@ FVector ACSCharacter::GetPawnViewLocation() const
 TArray<ACSWeapon*> ACSCharacter::GetCharacterWeapons() const
 {
 	return Weapons;
-}
-
-void ACSCharacter::OnHealthChanged(UCSHealthComponent* HealthComp, float Health, float HealthDelta, const UDamageType* DamageType, 
-									AController* InstigatedBy, AActor* DamageCauser)
-{
-
-	if (Health <= 0.0f && !bDied)
-	{
-
-		UE_LOG(LogTemp, Warning, TEXT("Dying.."));
-		// DIE
-		bDied = true;
-		
-		DetachFromControllerPendingDestroy();
-
-		GetMovementComponent()->StopMovementImmediately();
-		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
-
-		GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-		SetActorEnableCollision(true);
-
-		if (!bIsRagdoll)
-		{
-		// Ragdoll
-		
-			GetMesh()->SetAllBodiesSimulatePhysics(true);
-			GetMesh()->SetSimulatePhysics(true);
-			GetMesh()->WakeAllRigidBodies();
-			GetMesh()->bBlendPhysics = true;
-
-			UCharacterMovementComponent* CharacterComp = Cast<UCharacterMovementComponent>(GetMovementComponent());
-			if (CharacterComp)
-			{
-				CharacterComp->StopMovementImmediately();
-				CharacterComp->DisableMovement();
-				CharacterComp->SetComponentTickEnabled(false);
-			}
-
-			SetLifeSpan(10.0f);
-			bIsRagdoll = true;
-		}
-
-		/*PlayDeathEffects();*/
-
-		SetLifeSpan(10.0f);
-	}
 }
 
 FRotator ACSCharacter::GetAimOffset() const
@@ -839,8 +1057,4 @@ void ACSCharacter::GetLifetimeReplicatedProps(TArray < class FLifetimeProperty >
 	DOREPLIFETIME(ACSCharacter, StarterWeaponClasses);
 	DOREPLIFETIME(ACSCharacter, Weapons);
 	DOREPLIFETIME(ACSCharacter, ReloadingNow);
-	DOREPLIFETIME(ACSCharacter, bDied);
-	DOREPLIFETIME(ACSCharacter, bIsRagdoll);
 }
-
-

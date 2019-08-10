@@ -31,9 +31,6 @@ ACSWeapon::ACSWeapon()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	SkeletalMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Skeletal Mesh Component"));
-	RootComponent = SkeletalMeshComponent;
-
 	SphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere Comp"));
 	SphereComponent->SetSphereRadius(50.0f);
 	SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &ACSWeapon::OnOverlapped);
@@ -44,11 +41,11 @@ ACSWeapon::ACSWeapon()
 	MuzzleSocketName = "Muzzle Socket";
 	TracerTargetName = "Target";
 
-	BaseDamage = 100.0f;
+	BaseDamage = 450.0f;
 	RateOfFire = 600;
 
 	MagazineCapacity = 30;
-	MaxBullets = 900;
+	MaxBullets = 300;
 
 	CountOfBulletsInMagazine = MagazineCapacity;
 	CountOfBulletsOnCharacter = MaxBullets;
@@ -58,22 +55,29 @@ ACSWeapon::ACSWeapon()
 
 	ReloadingTimeRifleHipAndIronsights = 2.067f;
 
-	//Character = Cast<ACSCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
-
 	SetReplicates(true);
 	bNetUseOwnerRelevancy = true;
 
 	DoesHaveOwner = false;
 
+	// When you drop your weapon
 	ImpulseMultiplier = 1500.f;
+
+	FiringRange = 4800.0f;
+
+	SpreadOnIdle = 60.0f;
+	SpreadOnJogging = 350.0f;
+	SpreadOnZooming = 15.0f;
+	SpreadOnZoomingMoving = 30.0f;
+	SpreadOnCrouchingIdle = 50.0f;
+	SpreadOnCrouchingMoving = 150.0f;
+	SpreadOnCrouchingZoomingIdle = 5.0f;
+	SpreadOnCrouchingZoomingMoving = 10.0f;
 }
 
 void ACSWeapon::BeginPlay()
 {
 	Super::BeginPlay();
-
-	SkeletalMeshComponent->SetSimulatePhysics(true);
-	SkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 
 	TimeBetweenShots = 60 / RateOfFire;
 }
@@ -81,9 +85,6 @@ void ACSWeapon::BeginPlay()
 // trace the world from eyes of actor to crosshair location(screen center)
 void ACSWeapon::Fire()
 {
-	// Проверяем, если клиент вызывает функцию Fire(), тогда мы вызываем серверную реализацию этйо функции
-	// Логика функции Fire() исполняется на стороне сервера
-	// Клиент отправляет запрос серверу, что ему необходима эта функцию и сервер вызывает её
 	if (Role < ROLE_Authority)
 	{
 		ServerFire();
@@ -101,8 +102,8 @@ void ACSWeapon::Fire()
 
 			FVector ShotDirection = EyeRotation.Vector();
 
-			FVector TraceEnd = EyeLocation + (ShotDirection * 10000);
-			FVector TracerEndPoint = TraceEnd; // Particle target param
+			FVector TraceEnd = EyeLocation + (ShotDirection * FiringRange);
+			FVector TracerEndPoint = TraceEnd + CalculateSpread();
 
 			EPhysicalSurface SurfaceType = SurfaceType_Default;
 
@@ -117,7 +118,7 @@ void ACSWeapon::Fire()
 			PlayFireSoundEffect();
 
 			FHitResult HitResult;
-			if (GetWorld()->LineTraceSingleByChannel(HitResult, EyeLocation, TraceEnd, COLLISION_WEAPON, QueryParams))
+			if (GetWorld()->LineTraceSingleByChannel(HitResult, EyeLocation, TracerEndPoint, COLLISION_WEAPON, QueryParams))
 			{
 				// blocking hit and process damage
 				AActor* HitActor = HitResult.GetActor();
@@ -130,7 +131,17 @@ void ACSWeapon::Fire()
 					ActualDamage *= 5.0f;
 				}
 
-				UGameplayStatics::ApplyPointDamage(HitActor, ActualDamage, ShotDirection, HitResult, Owner->GetInstigatorController(), this, DamageType);
+				// check if we hit one of our base character
+				if (Cast<ACSBaseCharacter>(HitActor))
+				{
+					FPointDamageEvent PointDamage;
+					PointDamage.DamageTypeClass = DamageType;
+					PointDamage.HitInfo = HitResult;
+					PointDamage.ShotDirection = ShotDirection;
+					PointDamage.Damage = ActualDamage;
+
+					HitActor->TakeDamage(PointDamage.Damage, PointDamage, Cast<APawn>(HitActor)->GetController(), Owner);
+				}
 
 				PlayImpactEffects(SurfaceType, HitResult.ImpactPoint);
 
@@ -160,6 +171,59 @@ void ACSWeapon::Fire()
 			UGameplayStatics::PlaySound2D(this, EmptyMagazineSound);
 		}
 	}
+}
+
+void ACSWeapon::SetCurrentSpread(float& Min, float& Max)
+{
+	EPlayerMovementState CurrentPlayerState = Character->GetCurrentPlayerMovementState();
+	float CurrentSpread;
+
+	switch (CurrentPlayerState)
+	{
+		case IDLE:
+			CurrentSpread = SpreadOnIdle;
+			break;
+		case JOGGING:
+			CurrentSpread = SpreadOnJogging;
+			break;
+		case ZOOMING_IDLE:
+			CurrentSpread = SpreadOnZooming;
+			break;
+		case ZOOMING_MOVING:
+			CurrentSpread = SpreadOnZoomingMoving;
+			break;
+		case CROUCHING:
+			CurrentSpread = SpreadOnCrouchingIdle;
+			break;
+		case CROUCHING_MOVING:
+			CurrentSpread = SpreadOnCrouchingMoving;
+			break;
+		case CROUCHING_ZOOMING_IDLE:
+			CurrentSpread = SpreadOnCrouchingZoomingIdle;
+			break;
+		case CROUCHING_ZOOMING_MOVING:
+			CurrentSpread = SpreadOnCrouchingZoomingMoving;
+			break;
+		default:
+			break;
+	}
+
+	Max = CurrentSpread;
+	Min = CurrentSpread * (-1);
+}
+
+FVector ACSWeapon::CalculateSpread()
+{
+	float Min, Max;
+	SetCurrentSpread(Min, Max);
+
+	float DeviationX = FMath::RandRange(Min, Max);
+	float DeviationY = FMath::RandRange(Min, Max);
+	float DeviationZ = FMath::RandRange(Min, Max);
+
+	FVector Deviation = FVector(DeviationX, DeviationY, DeviationZ);
+
+	return Deviation;
 }
 
 void ACSWeapon::OnRep_HitScanTrace()
@@ -270,32 +334,24 @@ bool ACSWeapon::CanShoot()
 
 void ACSWeapon::Reload(bool bFromReplication)
 {
-	/*if (!bFromReplication && Role < ROLE_Authority)
+	float AnimDuration = PlayWeaponAnimations(ReloadAnim);
+
+	ReloadNow = true;
+	Character->ReloadingNow = ReloadNow;
+
+	GetWorldTimerManager().SetTimer(TimerHandle_ReloadingTime, this, &ACSWeapon::ReloadingEnd, AnimDuration, true);
+
+	int32 AmmoToReload = MagazineCapacity - CountOfBulletsInMagazine;
+	if (CountOfBulletsOnCharacter >= AmmoToReload)
 	{
-		ServerReload();
-	}*/
-
-	/*if (bFromReplication || CanReload())
-	{*/
-		float AnimDuration = PlayWeaponAnimations(ReloadAnim);
-
-		ReloadNow = true;
-		Character->ReloadingNow = ReloadNow;
-
-		GetWorldTimerManager().SetTimer(TimerHandle_ReloadingTime, this, &ACSWeapon::ReloadingEnd, AnimDuration, true);
-
-		int32 AmmoToReload = MagazineCapacity - CountOfBulletsInMagazine;
-		if (CountOfBulletsOnCharacter >= AmmoToReload)
-		{
-			CountOfBulletsInMagazine += AmmoToReload;
-			CountOfBulletsOnCharacter -= AmmoToReload;
-		}
-		else
-		{
-			CountOfBulletsInMagazine += CountOfBulletsOnCharacter;
-			CountOfBulletsOnCharacter -= CountOfBulletsOnCharacter;
-		}
-	//}
+		CountOfBulletsInMagazine += AmmoToReload;
+		CountOfBulletsOnCharacter -= AmmoToReload;
+	}
+	else
+	{
+		CountOfBulletsInMagazine += CountOfBulletsOnCharacter;
+		CountOfBulletsOnCharacter -= CountOfBulletsOnCharacter;
+	}
 }
 
 void ACSWeapon::ServerReload_Implementation()
@@ -330,27 +386,6 @@ void ACSWeapon::OnEnterInventory(ACSCharacter* NewOwner)
 	SetOwningPawn(NewOwner);
 }
 
-
-void ACSWeapon::SetOwningPawn(ACSCharacter* NewOwner)
-{
-	if (Character != NewOwner)
-	{
-		Instigator = NewOwner;
-		Character = NewOwner;
-		// Net owner for RPC calls.
-		SetOwner(NewOwner);
-	}
-}
-
-ACSCharacter* ACSWeapon::GetOwningPawn() const
-{
-	if (Character)
-	{
-		return Character;
-	}
-	return nullptr;
-}
-
 void ACSWeapon::ReloadingEnd()
 {
 	Character->EndReloading();
@@ -367,7 +402,6 @@ void ACSWeapon::PlayFireEffects(FVector TraceEnd)
 	if (MuzzleEffect)
 	{
 		UGameplayStatics::SpawnEmitterAttached(MuzzleEffect, SkeletalMeshComponent, MuzzleSocketName);
-		//UGameplayStatics::SpawnEmitterAtLocation(this, MuzzleEffect, MuzzleLocation, MuzzleRotation, true);
 	}
 
 	if (TracerEffect)
@@ -433,7 +467,6 @@ void ACSWeapon::PlayFireSoundEffect()
 
 void ACSWeapon::OnEquip()
 {
-	//float Duration = PlayWeaponAnimations(EquipAnim);
 	if (ReloadNow || bPendingEquip)
 	{
 		return;
@@ -443,29 +476,29 @@ void ACSWeapon::OnEquip()
 
 	GetWorldTimerManager().SetTimer(TimerHandle_EquipWeaponStopAnimationTime, this, &ACSWeapon::OnEquipStopAnimation, 0.05f, false);
 
-	if (EquipWeaponSound)
+	if (EquipSound)
 	{
-		UGameplayStatics::PlaySound2D(this, EquipWeaponSound);
+		UGameplayStatics::PlaySound2D(this, EquipSound);
 	}
 
 	if (Character)
 	{
-		AttachWeaponToCharacter(Character->WeaponAttachSocketName);
+		AttachItemToCharacter(Character->WeaponAttachSocketName);
 	}
 
 }
 
 void ACSWeapon::OnUnEquip(FName SocketName)
 {
-	//float Duration = PlayWeaponAnimations(UnEquipAnim);
+	if (UnEquipWeaponSound)
+	{
+		UGameplayStatics::PlaySound2D(this, UnEquipWeaponSound);
+	}
 
 	FTimerDelegate UnEquipDelegate = FTimerDelegate::CreateUObject(this, &ACSWeapon::OnUnEquipStopAnimation, SocketName);
 	GetWorldTimerManager().SetTimer(TimerHandle_UnEquipWeaponStopAnimationTime, UnEquipDelegate, 0.05f, false);
-	//GetWorldTimerManager().SetTimer(TimerHandle_EquipWeaponStopAnimationTime, this, &ACSWeapon::OnUnEquipStopAnimation, Duration, false);
 }
 
-// Half of equip animation 
-// Here we detach previous weapon and attach new weapon
 void ACSWeapon::OnEquipFinished()
 {
 	GetWorldTimerManager().ClearTimer(TimerHandle_EquipWeaponTime);
@@ -484,7 +517,7 @@ void ACSWeapon::OnEquipStopAnimation()
 
 void ACSWeapon::OnUnEquipStopAnimation(FName SocketName)
 {
-	AttachWeaponToCharacter(SocketName);
+	AttachItemToCharacter(SocketName);
 	if (UnEquipWeaponSound)
 	{
 		UGameplayStatics::PlaySound2D(this, UnEquipWeaponSound);
@@ -494,7 +527,7 @@ void ACSWeapon::OnUnEquipStopAnimation(FName SocketName)
 	Character->EndUnEquiping();
 }
 
-void ACSWeapon::AttachWeaponToCharacter(FName SocketName)
+void ACSWeapon::AttachItemToCharacter(FName SocketName)
 {
 	if (Character)
 	{
@@ -515,9 +548,6 @@ bool ACSWeapon::OnDropping()
 	SkeletalMeshComponent->SetActive(true);
 
 	SkeletalMeshComponent->AddImpulseAtLocation(Character->GetActorForwardVector() * ImpulseMultiplier, GetActorLocation());
-
-	// через секунду после выброса оружия, поставить setactive(false)
-
 	return true;
 }
 
@@ -532,60 +562,70 @@ void ACSWeapon::OnOverlapped(UPrimitiveComponent* OverlappedComponent, AActor* O
 {
 	if (OtherActor)
 	{
-		if (CanPickUp())
-		{
-			ACSCharacter* Character = Cast<ACSCharacter>(OtherActor);
+		ACSCharacter* Character = Cast<ACSCharacter>(OtherActor);
 
-			if (Character && Character->CurrentWeapon && Character->CurrentWeapon->ReloadNow)
-			{
-				return;
-			}
-
-			SkeletalMeshComponent->SetSimulatePhysics(false);
-			SkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-			if (Character)
-			{
-				ACSWeapon* Weapon;
-
-				if (WeaponType.Get() == Character->PistolWeapon.Get())
-				{
-					Weapon = Character->GetLightWeaponSlot();
-				}
-
-				else if (WeaponType.Get() == Character->ShotgunWeapon.Get())
-				{
-					Weapon = Character->GetMiddleWeaponSlot();
-				}
-
-				else
-				{
-					Weapon = Character->GetHardWeaponSlot();
-				}
-
-				HandlePickupWeapon(Character, Weapon);
-			}
-
-		}
+		
 	}
 }
 
-bool ACSWeapon::CanPickUp()
+void ACSWeapon::PickupItem(ACSCharacter* Character)
 {
-	if (GetOwningPawn())
+	if (CanPickUp())
 	{
-		return false;
+		if (Character->CurrentWeapon && Character->CurrentWeapon->ReloadNow)
+		{
+			return;
+		}
+
+		SkeletalMeshComponent->SetSimulatePhysics(false);
+		SkeletalMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		ACSWeapon* Item;
+
+		if (WeaponType.Get() == Character->PistolWeapon.Get())
+		{
+			Item = Character->GetLightWeaponSlot();
+		}
+
+		else if (WeaponType.Get() == Character->ShotgunWeapon.Get())
+		{
+			Item = Character->GetMiddleWeaponSlot();
+		}
+
+		else
+		{
+			Item = Character->GetHardWeaponSlot();
+		}
+
+		if (!Character->CurrentWeapon)
+		{
+			HandleItemPickup(Character, Item);
+		}
+		else if (Character->CurrentWeapon)
+		{
+			HandleItemPickup(Character, Item, Character->CurrentWeapon);
+		}
+
 	}
-	return true;
 }
 
-void ACSWeapon::HandlePickupWeapon(ACSCharacter* Character, ACSWeapon* Weapon)
+FName ACSWeapon::GetMuzzleSocket() const
 {
+	return MuzzleSocketName;
+}
+
+void ACSWeapon::HandleItemPickup(ACSCharacter* Character, ACSWeapon* Weapon, ACSWeapon* CurrentWeapon)
+{
+
+	if (CurrentWeapon && Weapon && CurrentWeapon->GetClass() == Weapon->GetClass())
+	{
+		Character->DropWeapon();
+		Character->AddWeapon(this);
+	}
+
 	// if character does not have that type of weapon
 	if (!Weapon)
 	{
-		
-		SphereComponent->SetActive(false);
 		Character->AddWeapon(this);
 	}
 	// if character has that type of weapon, but does not have max ammo, then we add ammo

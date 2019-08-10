@@ -4,20 +4,35 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "..\Public\CSBaseCharacter.h"
 #include "CSCharacter.generated.h"
 
 class UCameraComponent;
 class USpringArmComponent;
 class USoundBase;
 class ACSWeapon;
-class UCShealthComponent;
 class USoundCue;
-class UAudioComponent;
 class ACSShotgun;
 class ACSPistol;
+class ACSFlashlight;
+class ACSBaseCharacter;
+class UAnimMontage;
+
+UENUM()
+enum EPlayerMovementState
+{
+	IDLE,
+	JOGGING,
+	ZOOMING_IDLE,
+	ZOOMING_MOVING,
+	CROUCHING,
+	CROUCHING_MOVING,
+	CROUCHING_ZOOMING_IDLE,
+	CROUCHING_ZOOMING_MOVING
+};
 
 UCLASS()
-class COOPGAME_API ACSCharacter : public ACharacter
+class COOPGAME_API ACSCharacter : public ACSBaseCharacter
 {
 	GENERATED_BODY()
 
@@ -28,20 +43,23 @@ public:
 	/*  Weapon Sockets  */
 
 	// Weapon on hands
-	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
+	UPROPERTY(VisibleDefaultsOnly, Category = "ItemSockets")
 	FName WeaponAttachSocketName;
 
 	// Pistol
-	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
+	UPROPERTY(VisibleDefaultsOnly, Category = "ItemSockets")
 	FName PistolAttachSocketName;
 
 	// Shotgun
-	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
+	UPROPERTY(VisibleDefaultsOnly, Category = "ItemSockets")
 	FName ShotgunAttachSocketName;
 
 	// Rifle / Grenade launcher
-	UPROPERTY(VisibleDefaultsOnly, Category = "WeaponSockets")
+	UPROPERTY(VisibleDefaultsOnly, Category = "ItemSockets")
 	FName BackWeaponAttachSocketName;
+
+	UPROPERTY(VisibleDefaultsOnly, Category = "ItemSockets")
+	FName FlashlightAttachSocketName;
 
 	/*  Weapons For Pickup  */
 
@@ -53,15 +71,26 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
 	TSubclassOf<ACSPistol> PistolWeapon;
 
+	// check if we're equiping pistol for animation purposes
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSWeapon> MainWeapon;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Weapons")
+	TSubclassOf<ACSFlashlight> FlashlightClass;
+
 	UPROPERTY(Transient, ReplicatedUsing = OnRep_CurrentWeapon, BlueprintReadOnly, Category = "Weapons")
 	ACSWeapon* CurrentWeapon;
 
 	UPROPERTY(Replicated, BlueprintReadOnly)
 	bool ReloadingNow;
 
+	AActor* GrabbedItem;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+
+	void InitAllBaseCharacterFeatures();
 
 	/*  Weapon initialization(when we're spawning with all weapons)  */
 
@@ -160,14 +189,23 @@ protected:
 
 	void GetThirdWeaponSlot();
 
-	/*  Drop Weapon  */
+	void FlashlightPowerOnOff();
 
-	void DropWeapon();
+	/*  Pickup  */
 
-	/*  Health and Death  */
+	void DrawDebugTraceLineForPickup(FVector& StartPoint, FVector& EndPoint);
 
-	UFUNCTION()
-	void OnHealthChanged(UCSHealthComponent* HealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+	void GrabItem();
+
+	void ShowGrabItemWidget();
+
+	/*  Death  */
+
+	virtual void PlayHit(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, class AActor* DamageCauser, bool bkilled) override;
+
+	void StopPlayHitAnimation();
+
+	virtual void OnDeath(float DamageAmount, struct FDamageEvent const& DamageEvent, class APawn* EventInstigator, class AActor* DamageCauser) override;
 
 	/*  Net  */
 
@@ -181,7 +219,28 @@ protected:
 	UFUNCTION(BlueprintCallable)
 	FRotator GetAimOffset() const;
 
+	/*  Animations  */
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	UAnimMontage* HitAnimation1;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	UAnimMontage* HitAnimation2;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	UAnimMontage* HitAnimation3;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Sounds")
+	UAnimMontage* HitAnimation4;
+
+	virtual void ClearWidgetsAfterDeath() override;
+
+	void CheckPlayerState();
+
 protected:
+
+	/*  Player State  */
+
+	EPlayerMovementState PlayerMovementState;
 
 	/*  Components  */
 
@@ -191,10 +250,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USpringArmComponent* SpringArmComponent;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UAudioComponent* AudioComponent;
-
 	/*  Zooming  */
+
+	bool GettingHitNow;
 
 	bool bWantsToZoom;
 
@@ -215,7 +273,15 @@ protected:
 	UPROPERTY(BlueprintReadOnly)
 	bool IsSniperRifleZooming;
 
+	UPROPERTY(BlueprintReadOnly)
+	bool ShowGrabWidget;
+
+	uint8 PickedAnimationNumber;
+
 	/*  Weapons  */
+
+	UPROPERTY(BlueprintReadOnly)
+	ACSFlashlight* Flashlight;
 
 	UPROPERTY(Replicated)
 	TArray<ACSWeapon*> Weapons;
@@ -255,6 +321,10 @@ protected:
 	UPROPERTY(BlueprintReadOnly)
 	bool IsPistolEquiped;
 
+	bool IsFlashlightPickedup;
+
+	bool IsFlashlightEquiped;
+
 	/*  Gameplay bools  */
 
 	UPROPERTY(BlueprintReadOnly)
@@ -272,16 +342,13 @@ protected:
 	UPROPERTY(BlueprintReadOnly)
 	bool IsSprintingNow;
 
-	UPROPERTY(Replicated, BlueprintReadOnly, Category = "Player")
-	bool bDied;
+	bool IsCrouchingNow;
+
 
 	/*  Sprint and Walking  */
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sprint and Walking")
 	float SprintMultiplier;
-
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly)
-	float DefaultWalkSpeed;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Sprint and Walking")
 	float DefaultSprintProgress;
@@ -298,10 +365,7 @@ protected:
 	UPROPERTY(BlueprintReadOnly)
 	bool ShowSprintWidget;
 
-	/*  Health  */
-
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Health")
-	UCSHealthComponent* HealthComponent;
+	
 
 	/*  Time  */
 
@@ -311,18 +375,16 @@ protected:
 
 	FTimerHandle TimerHandle_DeathTime;
 
-	float EquipTime;
+	FTimerHandle TimerHandle_GettingHitTime;
 
 	float BreakTime;
 
-	/*  Physics  */
-
-	UPROPERTY(Replicated)
-	bool bIsRagdoll;
 
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+
+	EPlayerMovementState GetCurrentPlayerMovementState() const;
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -352,5 +414,11 @@ public:
 
 	ACSWeapon* GetHardWeaponSlot() const;
 
+	void SetFlashlight(ACSFlashlight* Flashlight);
+
 	void AddWeapon(ACSWeapon* NewWeapon, ACSWeapon* SecondWeapon = nullptr, ACSWeapon* ThirdWeapon = nullptr);
+
+	/*  Drop Weapon  */
+
+	void DropWeapon();
 };

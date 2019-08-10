@@ -2,6 +2,7 @@
 
 
 #include "..\Public\ACSProjectile.h"
+#include "..\Public\CSCharacter.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -21,7 +22,6 @@ AACSProjectile::AACSProjectile()
 	CollisionComponent->SetWalkableSlopeOverride(FWalkableSlopeOverride(WalkableSlope_Unwalkable, 0.f));
 	CollisionComponent->CanCharacterStepUpOn = ECB_No;
 
-	//CollisionComponent->OnComponentDestroyed(true).AddDynamic(this, &AACSProjectile::OnDestroyed);
 	RootComponent = CollisionComponent;
 
 	ProjectileMovementComponent = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Projectile Movement Component"));
@@ -61,7 +61,9 @@ void AACSProjectile::LifeSpanExpired()
 	{
 		ServerLifeSpanExpired();
 	}
+
 	MulticastLifeSpanExpired();
+
 	UGameplayStatics::ApplyRadialDamage(this, 50.0f, CollisionComponent->GetComponentLocation(),
 		200.0f, DamageType, TArray<AActor*>(), this, GetInstigatorController(), false, ECollisionChannel::ECC_Visibility);
 	Super::LifeSpanExpired();

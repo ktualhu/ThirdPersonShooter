@@ -23,22 +23,22 @@ public:
 
 protected:
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Firing")
 	int32 MinQuantityOfLineTraces;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Firing")
 	int32 MaxQuantityOfLineTraces;
 
 	int32 QuantityOfLineTraces;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Firing")
+	float FireDelay;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Firing")
 	float MinRandomDeviation;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Firing")
 	float MaxRandomDeviation;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
-	float FireDelay;
 
 	UPROPERTY(BlueprintReadOnly)
 	bool ShotgunFireNow;
@@ -62,10 +62,11 @@ protected:
 
 	virtual bool CanShoot() override;
 
+	// Only for shotgun
+	FVector ShotgunDeviation(float MinDeviation, float MaxDeviation);
+
 	UFUNCTION()
 	void ShotgunAbleToFire();
-
-	FVector CalculateDeviation();
 	
 private:
 

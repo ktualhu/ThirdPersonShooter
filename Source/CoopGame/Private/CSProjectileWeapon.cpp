@@ -13,19 +13,14 @@
 
 ACSProjectileWeapon::ACSProjectileWeapon()
 {
-	/*bReplicates = true;
-	bNetUseOwnerRelevancy = true;*/
-
-	BaseDamage = 500.0f;
+	BaseDamage = 4000.0f;
 	RateOfFire = 100;
 
 	MagazineCapacity = 6;
-	MaxBullets = 24;
+	MaxBullets = 6;
 
 	CountOfBulletsInMagazine = MagazineCapacity;
 	CountOfBulletsOnCharacter = MaxBullets;
-
-	ReloadingTimeRifleHipAndIronsights = 1.6000f;
 
 	SetReplicates(true);
 }
@@ -41,8 +36,8 @@ void ACSProjectileWeapon::Fire()
 	{
 		if (Projectile)
 		{
-			FVector StartLocation = SkeletalMeshComponent->GetSocketLocation("MuzzleSocket");
-			FRotator StartRotation = SkeletalMeshComponent->GetSocketRotation("MuzzleSocket");
+			FVector StartLocation = SkeletalMeshComponent->GetSocketLocation("Muzzle Socket");
+			FRotator StartRotation = SkeletalMeshComponent->GetSocketRotation("Muzzle Socket");
 
 			FActorSpawnParameters ActorSpawn;
 			ActorSpawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -61,7 +56,6 @@ void ACSProjectileWeapon::Fire()
 
 				AACSProjectile* ProjectileObj = GetWorld()->SpawnActor<AACSProjectile>(Projectile, StartLocation, EyeRotation, ActorSpawn);
 				ProjectileObj->MoveProjectile(ShotDirection);
-
 			}
 		}
 	}

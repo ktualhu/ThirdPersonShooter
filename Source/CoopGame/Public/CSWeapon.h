@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "..\Public\CSItem.h"
 #include "CSWeapon.generated.h"
 
 class USkeletalMeshComponent;
@@ -29,7 +30,7 @@ public:
 };
 
 UCLASS()
-class COOPGAME_API ACSWeapon : public AActor
+class COOPGAME_API ACSWeapon : public ACSItem
 {
 	GENERATED_BODY()
 	
@@ -39,19 +40,19 @@ public:
 
 	virtual void BeginPlay() override;
 
-	virtual void SetOwningPawn(ACSCharacter* Character);
-
-	virtual ACSCharacter* GetOwningPawn() const;
-
-	virtual void OnEquip();
+	virtual void OnEquip() override;
 
 	virtual void OnUnEquip(FName SocketName);
 
 	virtual void OnEnterInventory(ACSCharacter* NewOwner);
 
-	virtual void AttachWeaponToCharacter(FName SocketName);
+	virtual void AttachItemToCharacter(FName SocketName) override;
 
 	virtual bool OnDropping();
+
+	virtual void PickupItem(ACSCharacter* Character) override;
+
+	FName GetMuzzleSocket() const;
 
 	/*  Ammo Info  */
 	virtual int32 GetCountOfBulletsInMagazine() const;
@@ -75,6 +76,10 @@ protected:
 
 	UFUNCTION(BlueprintCallable)
 	virtual void Fire();
+
+	virtual void SetCurrentSpread(float& Min, float& Max);
+
+	FVector CalculateSpread();
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	virtual void ServerFire();
@@ -112,16 +117,16 @@ protected:
 	UFUNCTION()
 	virtual void OnUnEquipStopAnimation(FName SocketName);
 
-	virtual void DetachWeaponFromCharacter();
+	virtual void DetachWeaponFromCharacter() override;
 
 	/*  Pickup  */
 
 	UFUNCTION()
 	virtual void OnOverlapped(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-	virtual bool CanPickUp();
+	//virtual bool CanPickUp();
 
-	void HandlePickupWeapon(ACSCharacter* Character, ACSWeapon* Weapon);
+	virtual void HandleItemPickup(ACSCharacter* Character, ACSWeapon* Weapon, ACSWeapon* CurrentWeapon = nullptr);
 
 	/*  Net  */
 
@@ -138,18 +143,11 @@ protected:
 
 protected:
 
-	/*  Base Weapon  Info  */
-	UPROPERTY(Transient, ReplicatedUsing = OnRep_MyCharacter, EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
-	ACSCharacter* Character;
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon Base Info")
 	FName WeaponName;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon Base Info")
 	TSubclassOf<ACSWeapon> WeaponType;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Base Info")
-	USkeletalMeshComponent* SkeletalMeshComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Base Info")
 	USphereComponent* SphereComponent;
@@ -198,20 +196,17 @@ protected:
 	USoundBase* DefaultImpactSurfaceSound;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
-	USoundBase* EquipWeaponSound;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound")
 	USoundBase* UnEquipWeaponSound;
 
-	/*  Shooting  */
+	/*  Firing  */
 
 	UPROPERTY(ReplicatedUsing = OnRep_HitScanTrace)
 	FHitScanTrace HitScanTrace;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Shooting")
+	UPROPERTY(EditDefaultsOnly, Category = "Firing")
 	float BaseDamage;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Shooting")
+	UPROPERTY(EditDefaultsOnly, Category = "Firing")
 	float RateOfFire;
 
 	FTimerHandle TimerHandle_TimeBetweenShots;
@@ -219,6 +214,35 @@ protected:
 	float LastFireTime;
 
 	float TimeBetweenShots;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Firing")
+	float FiringRange;
+
+	/*  Firing Spread  */
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnIdle;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnJogging;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnZooming;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnZoomingMoving;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnCrouchingIdle;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnCrouchingMoving;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnCrouchingZoomingIdle;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spread")
+	float SpreadOnCrouchingZoomingMoving;
 
 	/*  Ammo  */
 
